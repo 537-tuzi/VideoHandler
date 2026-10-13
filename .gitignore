@@ -1,0 +1,19 @@
+# 构建产物
+/build/
+/build-dbg/
+/src/bin/
+/src/bin-dbg/
+
+# 第三方依赖（二进制/模型，README 记录下载源，不入库）
+/third_party/
+
+# 测试素材与生成产物
+/test/
+
+# 本地 AI 工作记忆（不随项目分发）
+/.workbuddy/
+
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+*.user
