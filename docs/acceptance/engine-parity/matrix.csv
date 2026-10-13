@@ -1,0 +1,32 @@
+case,组,描述,判定标准,round-1
+PAR-GT-001,GTCRN,合成白噪声10s,parity≤−60dB,待跑
+PAR-GT-002,GTCRN,真实语音素材(下载配方),parity≤−60dB,待跑
+PAR-GT-003,GTCRN,短于1hop输入,等长对齐且parity≤−60dB,待跑
+PAR-GT-004,GTCRN,非整hop尾部(3hop+123),等长对齐且parity≤−60dB,待跑
+PAR-GT-005,GTCRN,分块不变性chunk∈{64/256/4096/整段},bit-exact(放宽−120dB),待跑
+PAR-GT-006,GTCRN,48k立体声源(含重采样链),双级判据(引擎段≤−60dB),待跑
+PAR-GT-007,GTCRN,单声道源,双级判据(引擎段≤−60dB),待跑
+PAR-MD-001,MDX,合成白噪声10s,parity≤−60dB,待跑
+PAR-MD-002,MDX,真实混合素材(下载配方),parity≤−60dB,待跑
+PAR-MD-003,MDX,短于最小帧输入,报错且无输出文件,待跑
+PAR-MD-004,MDX,非整hop尾部,等长对齐且parity≤−60dB,待跑
+PAR-MD-005,MDX,分块不变性chunk∈{64/256/4096/整段},bit-exact(放宽−120dB),待跑
+PAR-MD-006,MDX,多批次长素材(>dimT帧),parity≤−60dB,待跑
+PAR-MD-007,MDX,伴奏模式(mix−vocals对齐),parity≤−60dB,待跑
+PAR-MD-008,MDX,48k源(引擎内重采样44.1k),行为不变+parity≤−60dB,待跑
+PAR-MD-009,MDX,输出契约负例(坏模型),明确报错且不写输出,待跑
+PAR-DS-001,DSP,50Hz陷波vs scipy双精度,parity≤−60dB,待跑
+PAR-DS-002,DSP,通带波纹200Hz–20kHz,|H|波动≤±0.1dB,待跑
+PAR-DS-003,DSP,60Hz profile(WP-1.6后),衰减≥20dB@60/120/180Hz,待跑
+PAR-DS-004,DSP,高通支路vs scipy,parity≤−60dB,待跑
+PAR-PT-001,变调,pitch(+5)∘pitch(−5)往返,相关系数≥0.99且长度一致,待跑
+PAR-PT-002,变调,分块不变性,bit-exact(放宽−120dB),待跑
+FFT-PR-001,FFT,往返恒等,RMS≤−130dB,待跑
+FFT-PR-002,FFT,Parseval能量守恒,相对误差≤1e-6,待跑
+FFT-PR-003,FFT,线性性,≤−130dB,待跑
+FFT-PR-004,FFT,冲激响应谱,幅偏差≤1e-6,待跑
+FFT-PR-005,FFT,随机信号vs numpy(n=512/6144/8192),幅相误差≤−100dB,待跑
+PAR-SR-001,采样率,48k源transcode直通,输出头48k/2ch且样本bit-exact,待跑
+PAR-SR-002,采样率,48k源denoise/pitch,输出头48k/2ch且parity≤−60dB,待跑
+PAR-SR-003,采样率,44.1k源回归,行为不变(现有用例全绿),待跑
+PAR-SR-004,采样率,44.1k源sep-vocals,输出头44.1k(路径不变),待跑

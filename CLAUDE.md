@@ -7,6 +7,7 @@ VideoHandler — Qt6 Widgets + FFmpeg + ONNX Runtime 的音频处理桌面软件
 ## 必读文件
 
 - `docs/REQUIREMENTS.md` — **需求基线**（决策 D1–D7、FR/NFR 全表、风险、版本规划、开放问题 O1–O4）。任何改动先对照此文档；需求变更先改文档再写码。
+- `docs/spec/v1-development-plan.md` — **开发计划基线**（M1–M4 里程碑、工作包 WBS、DoD 与开放问题闸门；动工前先对照排序与依赖）。
 - `README.md` — 第三方依赖获取方式。
 
 ## 构建与验证
@@ -52,7 +53,7 @@ model/data.h         全局常量（kCanonicalRate=44100、后缀、模型相对
 - ORT 引擎用 PIMPL（`struct Impl; std::unique_ptr<Impl>`）；模型参数（sample_rate/n_fft/hop/窗型/状态 shape）从 ONNX metadata 读，**勿硬编码**。
 - FFmpeg 胶水的失败路径必须零泄漏：沿用现有 `do{}while(false)` + 集中释放 + 失败删半成品的风格。
 - 注释与 UI 文案用中文；常量 `kCamelCase`，方法驼峰；每个头文件首行注释说明职责。
-- Git：中文提交信息，单 `main` 分支，有 origin 远程。
+- Git：中文提交信息，单 `main` 分支，有 origin 远程；提交一律只署用户本人，**禁止添加 `Co-Authored-By` 等任何联合作者尾注**。
 
 ## 已知 P0 债（改引擎前先读；2026-10 代码审查结论）
 
