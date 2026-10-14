@@ -21,7 +21,7 @@
 
 | # | 工作包 | spec | 关联 | 规模 | 依赖 |
 |---|---|---|---|---|---|
-| WP-1.0 | 热修包（2026-10-14 架构审视产出：A1 转码分块排水 / A11 关窗取消 / A12 流复制取消 / A14 override / A2 引擎异常屏障——**五项代码全部落地**，Linux 侧 round-1/2 全绿含错误注入，证据 `docs/acceptance/wp-1.0-hotfix/matrix.csv`） | `architecture-review.md` §3/§6.1 | R12/R13、NFR-P4 | S | 无（先行；剩 Windows round-3：编译 + 带模型 CLI 冒烟 + ≥2h 素材 RSS 复验 + GUI 交互，runbook 见同目录 `round-3-windows.md`） |
+| WP-1.0 | 热修包（2026-10-14 架构审视产出：A1 转码分块排水 / A11 关窗取消 / A12 流复制取消 / A14 override / A2 引擎异常屏障——**五项代码全部落地**，Linux 侧 round-1/2 全绿含错误注入，证据 `docs/acceptance/wp-1.0-hotfix/matrix.csv`）。**已完成（2026-10-14）：Windows round-3 全绿收官**——MinGW 0 error、七动词含真实模型全 OK、错误注入回归 PASS、2h RSS 22.1/47.9MiB、byte-identity SHA256 一致、GUI 取消/关窗交互 PASS（`round-3-windows.md`）；R12/R13 关闭 | `architecture-review.md` §3/§6.1 | R12/R13、NFR-P4 | S | 无 |
 | WP-1.1 | parity 测试基建（金样本/指标/用例/比较器） | `parity-test-plan.md` | P0#1、NFR-Q1/Q2、NFR-M2 | M | WP-1.2（Linux 跑 DUT）或 Windows 手跑 |
 | WP-1.2 | Linux 引擎测试构建 + CMake 分层 + CI 双跑 | `ci-build-strategy.md` | NFR-M2/M4、P0 债「D:/qt6 硬编码」 | M | 无（先行） |
 | WP-1.3 | FFT 重写（twiddle 表 + 2 的幂直通 + Bluestein 精度） | `fft-rewrite.md` | P0#2 | M | 无 |

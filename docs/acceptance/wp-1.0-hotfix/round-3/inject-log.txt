@@ -1,0 +1,3 @@
+﻿ai-denoise x garbage.onnx => [FAIL: 鍔犺浇 AI 妯″瀷澶辫触锛歀oad model from D:\psh111\VideoHandler\docs\tmp\round3-windows\garbage.onnx failed:Protobuf parsing failed.] exit=1 残留=无
+ai-denoise x 不存在模型 => [FAIL: 鎵句笉鍒版ā鍨?D:\psh111\VideoHandler\docs\tmp\round3-windows\nonexistent.onnx] exit=1 残留=无
+sep-vocals x garbage.onnx => [FAIL: 鍔犺浇浜哄０鍒嗙妯″瀷澶辫触锛歀oad model from D:\psh111\VideoHandler\docs\tmp\round3-windows\garbage.onnx failed:Protobuf parsing failed.] exit=1 残留=无
