@@ -195,6 +195,8 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
                     enhanced.insert(enhanced.end(), aiOut.begin(), aiOut.end());
                     aiIn.clear();
                     if (!engine.lastError().isEmpty()) return engine.lastError();
+                    e = drainEnhanced();// 分块后就地排水，引擎输出不全程驻留内存（NFR-P4）
+                    if (!e.isEmpty()) return e;
                     if (onProgress && estFrames > 0.0)
                         onProgress(static_cast<int>(qBound(0.0, 100.0 * fed / estFrames, 99.0)));
                 }

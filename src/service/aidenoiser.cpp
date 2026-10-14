@@ -133,7 +133,11 @@ bool AiDenoiser::setup(const QString& modelPath, QString* err) {
     try {
         Ort::SessionOptions opts;
         opts.SetIntraOpNumThreads(1);// 小模型单线程足够，免线程池开销
+#ifdef _WIN32
         impl_->sess = std::make_unique<Ort::Session>(impl_->env, modelPath.toStdWString().c_str(), opts);
+#else
+        impl_->sess = std::make_unique<Ort::Session>(impl_->env, modelPath.toStdString().c_str(), opts);// 非 Windows 走窄路径（UTF-8）
+#endif
         Ort::AllocatorWithDefaultOptions al;
         Ort::ModelMetadata meta = impl_->sess->GetModelMetadata();
         for (size_t i = 0; i < impl_->sess->GetInputCount(); ++i) {

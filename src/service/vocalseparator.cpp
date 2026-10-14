@@ -194,7 +194,11 @@ bool VocalSeparator::setup(const QString& modelPath, QString* err) {
     try {
         Ort::SessionOptions opts;
         opts.SetIntraOpNumThreads(2);
+#ifdef _WIN32
         impl_->sess = std::make_unique<Ort::Session>(impl_->env, modelPath.toStdWString().c_str(), opts);
+#else
+        impl_->sess = std::make_unique<Ort::Session>(impl_->env, modelPath.toStdString().c_str(), opts);// 非 Windows 走窄路径（UTF-8）
+#endif
         const auto shape = impl_->sess->GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
         if (shape.size() != 4 || shape[1] != 4) {
             if (err) *err = QStringLiteral("模型输入规格不符，需要 [1,4,dimF,dimT] 的 MDX-Net 模型");

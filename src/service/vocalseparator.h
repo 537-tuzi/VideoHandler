@@ -13,7 +13,7 @@ public:
     bool setup(const QString& modelPath, QString* err);// 加载模型并校验输入规格
     void setInstrumental(bool on);// 输出伴奏（mix−人声）而非人声，默认人声
     bool ready() const;
-    QString lastError() const;// 运行期错误（音频太短等），空为无错
+    QString lastError() const override;// 运行期错误（音频太短等），空为无错
     int inRate() const override;
     int inChannels() const override { return 2; }
     std::vector<float> process(const float* in, int64_t frames) override;

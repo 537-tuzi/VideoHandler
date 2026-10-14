@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/psh/VideoHandler/docs/tmp/linux-build/build-pre/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

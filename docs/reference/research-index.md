@@ -20,8 +20,10 @@
 | `research-realtime-threading.md` | RT 铁律一手原文（Bencina/PortAudio/JUCE）/MMCSS/SPSC 队列/双线程模型/预算分解/注入法 | M4、NFR-L1/L2/L3、O3、架构审视 |
 | `research-qt-audio-apps.md` | Mixxx/LMMS/Hydrogen/Audacity 四仓实践 + Qt 官方线程文档 26 条；现状惯用项确认 + 隐患 H1–H8 | 架构审视、FR-24、A11–A13 |
 | `research-cpp-engine-patterns.md` | GCC 13/MinGW C++23 可用表/注册表模式（LLVM 式）/processInto 形态/CMake 现代惯例 | NFR-M1、FR-24、NFR-M4、A14 |
+| `research-cpp11-26-evolution.md` | C++11→26 面向音频/DSP/实时的特性筛选 + C++26 编译器落地快照 + 采用路线（含「已该用而未用」行号审计） | C++ 标准档位决策、v2 接口、WP-1.3 二期（simd）、NFR-L2 |
+| `research-audio-algorithms-frontier.md` | 音频算法前沿：FastEnhancer（FR-4 候选）/Band-SCNet（实时分离反证）/VC 延迟新锚点（O3）/INT8 量化/Signalsmith Stretch/DNS 挑战赛现状 | FR-4、FR-5、O3、NFR-C3、NFR-P5 |
 
-> 2026-10-14 追加上 4 行（架构审视批，方法同前：一手信源 + 【已确认/倾向/未确认】标注；结论已汇入 `docs/spec/architecture-review.md` §4）。
+> 2026-10-14 追加上 4 行（架构审视批，方法同前：一手信源 + 【已确认/倾向/未确认】标注；结论已汇入 `docs/spec/architecture-review.md` §4）。当日再追加末行（音频算法前沿批，方法同前；基线修订建议 §7.5 五条已于同日用户确认，落地 REQUIREMENTS v1.4）。
 
 ## 2. 开放问题证据状态（REQUIREMENTS §10）
 
@@ -119,3 +121,18 @@
 7. FR-15 注改：官方导出工具存在（ZFTurbo MSS_ONNX_TensorRT，MIT）、官方不发布成品、社区成品核验或自导。
 8. FR-A6 注：whisper.cpp `-ml 1` 词级时间戳为启发式实验特性，高精度需 `-dtw` 或外部对齐。
 9. NFR-C4/FR-8 注：Xet 仓库 CAS 流量绕过 HF_ENDPOINT，镜像兼容按 resolve 契约实测；HF 官方已不做跨运行续传，FR-8 为自研纯 HTTP 下载器（已实测支持）。
+
+### 7.4 REQUIREMENTS v1.3 修订（**已确认落地**，2026-10-14 用户确认；源头 = `docs/spec/architecture-review.md` 架构审视，其外部证据即上 4 行调研文档）
+
+1. §8 新增 R12（转码内存无界破 NFR-P4，A1 已热修待 Windows ≥2h 素材 RSS 复验）、R13（引擎异常屏障缺失可致 std::terminate，A2 未修随 WP-1.0 收尾）；§6 组件选型补 AGPL 同禁（JUCE AbstractFifo 禁用；SPSC 自研或 rigtorp/readerwriterqueue）。
+2. 同批热修 A11（关窗假死）/A12（流复制不可取消）/A14（override 卫生项）已进源码，待 Windows CLI 冒烟；开发计划增 WP-1.0 热修包，CLAUDE.md P0 债清单增 #8/#9。
+
+### 7.5 REQUIREMENTS v1.4 修订（**已确认落地**，2026-10-14 用户确认 5 条全收 → REQUIREMENTS v1.4 + 开发计划 M2/M4 段同步；源头 = `research-audio-algorithms-frontier.md`）
+
+1. §4「不做」清单：`实时人声分离（算力不现实）` → `实时人声分离（暂缓——Band-SCNet 已证 CPU 实时可行方向，RTF 0.478，见调研文档）`。反证性质：原表述把「当前不排期」写成了「不可能」，与 2026 证据冲突。
+2. §10 O3 / §8 R2 锚点补充：新增 StreamVC 70.8ms【已确认】、MeanVC2 110ms Apache-2.0【已确认】、Zero-VC 20ms（闭源，仅论文）正锚点；Seed-VC 为 GPL-3.0 **禁用**。闸门本身（真机脉冲法实测）不变，仅改「正反锚点皆缺」的证据描述。
+3. FR-4（M2 AI 降噪档）候选增补：FastEnhancer（ICASSP 2026，MIT，流式 ONNX，1-hop 延迟 6.25–16ms，ORT CPU RTF 0.012–0.03）与 DFN3 并列评估——兼供实时链参考。
+4. NFR-C3（SoundTouch LGPL 静链合规）新增解法候选：Signalsmith Stretch（MIT）替换评估，许可问题随之消失。
+5. M4 增 INT8 量化前置实验（调研证据：GTCRN 级模型 CPU 加速 3.3×），为实时链预算兜底。
+
+> 落地traceability：① → REQUIREMENTS §4.4（注：当日用户随后明确否决该功能，终态「不做——用户决策」，「暂缓」措辞作废）；② → §8 R2 + §10 O3；③ → FR-4 行 + 开发计划 M2/§3；④ → NFR-C3 + §6 表；⑤ → 开发计划 §4 M4 条目 + R2 对策。逐字对应见 REQUIREMENTS 修订记录 v1.4 行。

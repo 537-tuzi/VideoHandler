@@ -1,7 +1,7 @@
 # VideoHandler 需求文档
 
-- 版本：v1.2（需求基线）
-- 日期：2026-10-13
+- 版本：v1.4（需求基线）
+- 日期：2026-10-14
 - 状态：已评审通过（决策 D1–D7 全部锁定）
 - 说明：本文件是后续所有迭代的对照基准。需求 ID（FR-x / NFR-x / R-x）一经发布不得复用，变更需新增修订记录。
 
@@ -86,7 +86,7 @@
 | FR-1 | 媒体载入与探测 | 含多音轨视频的轨道选择（现仅取 best stream） | 需改 |
 | FR-2 | 视频/音频分离 | 抽音轨（流复制）+ 抽无声视频 | ✅ 已有 |
 | FR-3 | 离线 DSP 降噪 | 50/60Hz hum 参数化 + 高通 | 需改（60Hz） |
-| FR-4 | 离线 AI 降噪 | 快速档 GTCRN + 质量档 DeepFilterNet3 | 半有（缺 DFN3） |
+| FR-4 | 离线 AI 降噪 | 快速档 GTCRN + 质量档 DeepFilterNet3；注（2026-10-14 调研，v1.4）：FastEnhancer（ICASSP 2026，MIT，流式 ONNX，1-hop 延迟 6.25–16ms、ORT CPU RTF 0.012–0.03）列为质量档**并列候选**，M2 与 DFN3 一起评估选型（证据 `docs/reference/research-audio-algorithms-frontier.md`）；其流式低延迟特性兼为 FR-11 实时链参考 | 半有（缺质量档） |
 | FR-5 | 离线人声分离/伴奏 | MDX 快速档 | ✅ 已有（需 parity 验证） |
 | FR-6 | 离线变调（不变速） | SoundTouch | ✅ 已有 |
 | FR-7 | 离线 AI 变声 | RVC：ContentVec 特征 + F0 + 索引检索 + 音高偏移，导出 | **无，最大新增** |
@@ -131,7 +131,7 @@
 
 ### 4.4 Won't（明确不做，防范围失控）
 
-云端音频处理、账号体系、遥测、移动端、主程序内置训练、实时人声分离（算力不现实）、Agent 绕过命令层直接操作文件。
+云端音频处理、账号体系、遥测、移动端、主程序内置训练、实时人声分离（**不做——用户决策，2026-10-14**；技术注记：理由不是「算力不现实」——CPU 实时方向已被 Band-SCNet 证明可行（RTF 0.478，`docs/reference/research-audio-algorithms-frontier.md`），纯属产品取舍）、Agent 绕过命令层直接操作文件。
 
 ---
 
@@ -192,7 +192,7 @@
 
 - **NFR-C1**：音频处理全本地，无遥测无账号；云 LLM 仅用户显式开启（D6），开启时明确告知命令文本将发往所配 API。
 - **NFR-C2**：随包分发 THIRD-PARTY 清单：逐依赖 + 逐模型列来源与许可证。
-- **NFR-C3**：LGPL 合规：FFmpeg/Qt 动态链接；**SoundTouch 静态链 `.a` 必须改动态或提供目标文件**；修正 gyan.dev 导入库 + BtbN DLL 混用，统一同一份 LGPL 构建三件套。
+- **NFR-C3**：LGPL 合规：FFmpeg/Qt 动态链接；**SoundTouch 静态链 `.a` 必须改动态或提供目标文件**；修正 gyan.dev 导入库 + BtbN DLL 混用，统一同一份 LGPL 构建三件套。v1.4 增解法候选：评估以 Signalsmith Stretch（MIT，仓库页已核验）替换 SoundTouch（FR-6），替换则本项 SoundTouch 许可问题消失（是否可行随 WP-1.7 构建统一时一并定）。
 - **NFR-C4**：模型下载源可配置镜像（HuggingFace + hf-mirror；⚠ Xet 仓库 CAS 流量绕过 HF_ENDPOINT，镜像兼容性以 resolve 契约逐镜像实测为准——见 FR-8 注）。
 - **NFR-C5**：变声功能内置使用须知（禁止冒充他人违法使用）。
 
@@ -213,7 +213,7 @@
 
 | 组件 | 许可证 | 再分发 | 风险 |
 |---|---|---|---|
-| Qt6 / FFmpeg(LGPL) / ORT / miniaudio / SoundTouch | LGPL/MIT 等 | ✅ 动态链接即可 | SoundTouch 静态链不合规（NFR-C3） |
+| Qt6 / FFmpeg(LGPL) / ORT / miniaudio / SoundTouch | LGPL/MIT 等 | ✅ 动态链接即可 | SoundTouch 静态链不合规（NFR-C3；替换候选 Signalsmith Stretch，MIT，v1.4） |
 | GTCRN 模型（sherpa-onnx 分发） | **MIT**（2026-10-14 核验：出处链闭环到上游仓库 LICENSE，倾向结论） | ✅ | 低：sherpa release 页无逐字模型许可字样，发版前向官方书面确认一次 |
 | DeepFilterNet3 权重 | MIT 系 | ✅ | 低 |
 | UVR-MDX-NET-Voc_FT | UVR 生态惯例免费再分发 | 有先例，须标注来源 | 中 |
@@ -224,6 +224,8 @@
 其他约束：Windows 10/11 x64 主目标（Linux 保持可编译，CI 双跑）；C++20 + Python 3.10（训练器独立打包，不污染用户环境）；CUDA 12.x；参考机 RTX 3060/8GB。
 
 虚拟声卡（FR-11，2026-10-14 官网条款 + **官方驱动包 EULA 原文**核验）：VB-CABLE 允许**原样拷贝分发（EULA 原文 "copy and diffuse AS IS"）与引导用户自装**（官网推荐方式）；⚠ **将 VB-CABLE 集成进本产品安装流程须先取得 VB-Audio 书面同意**（EULA 禁止 "integrate … in another software installation procedure without Author agreement"，与官网宽松口径冲突——从严执行）。署名与捐赠：标注 vb-cable.com 来源 + donationware 提示 + 保留付费通道（官网措辞 will、EULA 措辞 might，从严）；A+B / C+D 组合禁止捆绑；企业场景按量授权。开源替代无干净许可方案（OBS-Virtual-Mic-Plugin 为 GPL，红线禁用）。详见 `docs/reference/falsify-licenses.md`。
+
+组件选型补充（2026-10-14 架构审视落档）：**AGPL 与 GPL 同禁**（D1）。实时化队列选型注意 JUCE AbstractFifo 为 AGPLv3（双许可原文核实）**禁用**——SPSC 自研或选 rigtorp（MIT）/ readerwriterqueue（BSD-2）；Mixxx/LMMS/Hydrogen 为 GPL 系，只可参照思路、不可复制代码。证据链 `docs/spec/architecture-review.md` §4。
 
 ---
 
@@ -242,7 +244,7 @@
 | # | 风险 | 概率 | 影响 | 对策 |
 |---|------|------|------|------|
 | R1 | ContentVec 许可证残余风险（2026-10-14 溯源+反证：MIT，且 HuBERT 系教师标签来源非权重初始化——**无许可继承链，「传递链复核」已无对象**） | 低 | 低 | THIRD-PARTY 清单登记证据链（NFR-C2）；商业化前对作者 MIT 声明做一次法务确认（流程性动作） |
-| R2 | RVC 实时在参考机压不进 150ms（2026-10-14 反证：3060 级锚点正反皆缺 + w-okada#796 反例 + 捕获链 OEM 现实 20–45ms/向 + 变声链最坏算术 181ms 超支） | 高 | 高 | **写实时代码前先跑最小 benchmark 实测 chunk 推理耗时**；chunk 调优/ORT 优化；兜底如实公布实测延迟 |
+| R2 | RVC 实时在参考机压不进 150ms（2026-10-14 反证：w-okada#796 反例 + 捕获链 OEM 现实 20–45ms/向 + 变声链最坏算术 181ms 超支；v1.4 补锚：RVC 系 3060 级真机锚点仍缺，但**架构级正锚点已现**——StreamVC 端到端 70.8ms（Pixel 7 CPU）/ MeanVC2 110ms（Apache-2.0）/ Zero-VC 20ms（闭源，仅论文），均非 RVC 架构、无一可直用；Seed-VC 为 GPL-3.0 **禁用**） | 高 | 高 | **写实时代码前先跑最小 benchmark 实测 chunk 推理耗时**；chunk 调优/ORT 优化（v1.4 增：INT8 量化兜底，见 M4 前置实验）；兜底如实公布实测延迟 |
 | R3 | 训练器 Python 环境在用户机器不可用 | 高 | 中 | 独立打包（内嵌运行时）；训练器失败不阻塞主程序 |
 | R4 | 模型下载被墙/失联 | 高 | 中 | 镜像可配置（NFR-C4） |
 | R5 | 单人项目范围失控 | 高 | 高 | 严格执行 MoSCoW；v1 = 4.1 节清单一寸不加 |
@@ -252,6 +254,8 @@
 | R9 | LLM 与音频引擎争 VRAM | 高 | 中 | LLM 默认 CPU；按需加载调度 |
 | R10 | Agent 使范围失控风险翻倍 | 高 | 高 | 严格分层：v1 只做工作区+无头层，Agent 本体 v1.x（D5） |
 | R11 | 幻觉参数造成破坏性操作 | 中 | 高 | 三道校验闸 + 原件只读 + 每步确认（D7），机制兜底不依赖 LLM 靠谱 |
+| R12 | 离线转码内存无界破 NFR-P4（2026-10-14 架构审视 A1 实锤：引擎输出缓冲曾全程驻留内存，2h@44.1k/2ch 实测 2.80GiB > 2GB 红线） | 已发生 | 高 | **已热修**（feedAi 分块后就地排水）；Linux 已复验：2h 素材峰值 57MB、耗时 −40%、输出逐字节一致（`docs/tmp/linux-build/smoke-results.txt`）；Windows 同款复验后关闭（WP-1.0） |
+| R13 | 引擎运行期异常无屏障致进程崩溃（架构审视 A2：AiDenoiser `sess->Run` 可抛 Ort::Exception 穿透转码器与 worker 槽直达 std::terminate；同库 vocalseparator 却有 catch，错误通道不一致） | 低 | 高 | 接口契约补「process/flush 不得抛出」+ 引擎内 catch 归口 lastError() + runJob 兜底 catch；ORT 运行期错误注入验收（WP-1.0 收尾项） |
 
 ---
 
@@ -279,7 +283,7 @@ v2 = FR-20..23 + FR-A9 + 确认策略可配置化
 |---|------|---------|------------|
 | O1 | GTCRN 模型确切许可证 — **已关闭（2026-10-14）**：上游仓库 LICENSE=MIT（倾向结论）；残余=发版前向 sherpa 官方书面确认一次 | 原阻塞随包分发（NFR-C2），已解除 | — |
 | O2 | ContentVec 替代特征提取器可行性 — **已关闭（2026-10-14）**：CC-BY-NC 前提被推翻（仓库 MIT + 作者 issue #34 确认权重同许可）；R1 降级，替代方案降为效果选项 | 原阻塞 R1，已解除 | — |
-| O3 | RVC chunk 推理延迟实测（用户 GPU）——**闸门保留且强化**：区间证据仅 RVC 官方 README 声明 170ms / ASIO 90ms（未标 GPU；⚠ v1.1 误归 w-okada，2026-10-14 反证已更正）；另有 w-okada#796 反例（i9+RX6800XT 实时不可用）、3060 级锚点正反皆缺、捕获链 OEM 现实 20–45ms/向、变声链最坏算术 181ms 超支（§5.1）——**150ms 属未证实（正反锚点皆缺），必须真机脉冲法实测** | R2 / 实时架构决策 | v1 实时化开发前 |
+| O3 | RVC chunk 推理延迟实测（用户 GPU）——**闸门保留且强化**：区间证据仅 RVC 官方 README 声明 170ms / ASIO 90ms（未标 GPU；⚠ v1.1 误归 w-okada，2026-10-14 反证已更正）；另有 w-okada#796 反例（i9+RX6800XT 实时不可用）、捕获链 OEM 现实 20–45ms/向、变声链最坏算术 181ms 超支（§5.1）；v1.4 补锚（2026-10-14 调研）：**架构级正锚点已现**——StreamVC 70.8ms（Pixel 7 CPU，已确认）/ MeanVC2 110ms（Apache-2.0，已确认）/ Zero-VC 20ms（闭源，仅论文），但均非 RVC 架构、无一可直用；Seed-VC 为 GPL-3.0 禁用；RVC 系 3060 级真机锚点仍缺——**150ms 属未证实（RVC 真机锚点仍缺），必须真机脉冲法实测** | R2 / 实时架构决策 | v1 实时化开发前 |
 | O4 | Qwen 量化模型再分发许可选型 — **已关闭（2026-10-14）**：Qwen3 全系 Apache-2.0，官方/unsloth GGUF 均可再分发，选型限此二源；⚠ 例外与先例（2026-10-14 反证）：Qwen3-Omni 三仓库 license:other 且无 LICENSE 文件（排除）；2026 年 Qwen3.8-Max/Flash-Next 已转自定义许可且同代混用——**选型硬规则：逐仓库核对 LICENSE 文件原文，排除例外** | 原阻塞 FR-A5，已解除 | — |
 
 证据链与残余盲点汇总：`docs/reference/research-index.md`。
@@ -293,3 +297,5 @@ v2 = FR-20..23 + FR-A9 + 确认策略可配置化
 | 2026-10-13 | v1.0 | 首版基线：D1–D7 决策、FR/NFR/风险/版本规划、Agent 增量（D5–D7） |
 | 2026-10-14 | v1.1 | 外部调研结论落基线（证据链 `docs/reference/research-index.md`）：§6 GTCRN→MIT、ContentVec CC-BY-NC 推翻为 MIT、Qwen→Apache-2.0（限官方/unsloth 源）、新增 VB-CABLE 分发条款；§8 R1 降级（高×高→低×中）；§10 O1/O2/O4 关闭、O3 表述更新（闸门保留）；§5.1 注 WASAPI 官方延迟数字；FR-15 注 ONNX 可得性硬约束 |
 | 2026-10-14 | v1.2 | 反证审查结论落基线（证据链 `docs/reference/research-index.md` §7 / falsify-*.md）：§5.1 延迟预算表重写（拆降噪/变声两链，捕获按 OEM 现实 20–45ms/向、小周期改「上限非承诺」，变声链最坏 181ms 显式超支，补用户侧链与 NFR-L1 测量口径）；§10 O3 归属更正（170/90ms 出自 RVC README，非 w-okada）+ w-okada#796 反例，下调为「未证实」；§8 R2 中→高、R1 残余闭合（无 HuBERT 权重继承链）；§6 Qwen 补 Omni 例外与 2026 自定义许可先例（逐仓库核对升为硬规则）、VB-CABLE 收窄（原样拷贝/自装 OK，集成安装器需书面同意）、ContentVec 残余更新；FR-8 定位为自研纯 HTTP 下载器（HF 官方无跨运行续传）；FR-15 改官方导出工具存在、不发成品；FR-A6 注 `-ml 1` 启发式前提 |
+| 2026-10-14 | v1.3 | 架构审视结论落基线（证据链 `docs/spec/architecture-review.md` + `docs/reference/research-{streaming-pipelines,realtime-threading,qt-audio-apps,cpp-engine-patterns}.md`）：§8 新增 R12（转码内存无界破 NFR-P4，A1 实锤，已热修待 Windows ≥2h 素材 RSS 复验）、R13（引擎异常屏障缺失可致 std::terminate，A2，未修，随 WP-1.0 收尾）；§6 组件选型补 AGPL 同禁（JUCE AbstractFifo 禁用，SPSC 自研或 rigtorp/readerwriterqueue；Mixxx/LMMS/Hydrogen 只可参照思路）。同批热修 A11（关窗假死）/A12（流复制不可取消）/A14（override 卫生项）已进源码待 Windows CLI 冒烟；开发计划增 WP-1.0 热修包 |
+| 2026-10-14 | v1.4 | 音频算法前沿调研落基线（证据链 `docs/reference/research-audio-algorithms-frontier.md`，候选清单 `research-index.md` §7.5 用户确认）：① §4.4 实时人声分离「算力不现实」→「不做」（先经 Band-SCNet CPU RTF 0.478 反证原表述、落「暂缓」，同日用户明确否决该功能，终态「不做——用户决策」，技术注记保留防错误理由回潮）；② §8 R2 / §10 O3 补锚——架构级正锚点已现（StreamVC 70.8ms / MeanVC2 110ms Apache-2.0 / Zero-VC 20ms 闭源，均非 RVC 架构不可直用），Seed-VC GPL-3.0 禁用，RVC 真机锚点仍缺，闸门与真机脉冲法实测不变；③ FR-4 质量档增 FastEnhancer（ICASSP 2026，MIT，流式 ONNX）与 DFN3 并列候选，M2 评估；④ NFR-C3 增 Signalsmith Stretch（MIT）替换 SoundTouch 候选（随 WP-1.7 一并定）；⑤ M4 增 INT8 量化前置实验（CPU 3.3× 论文级实证，实时预算兜底）——开发计划 M2/M4 段同步 |

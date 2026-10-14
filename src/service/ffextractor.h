@@ -15,8 +15,10 @@ public:
     explicit FFExtractor(QObject* parent = nullptr);
     void setCancelFlag(std::atomic<bool>* flag);// 初始化取消标志（由服务装配）
     static bool probe(const QString& inPath, QString* info);// 探测文件流信息，false 时 info 为错误说明
-    static QString extractAudio(const QString& inPath, QString* err, const std::function<void(int)>& onProgress = {});// 提取音轨，成功返回输出路径
-    static QString extractVideo(const QString& inPath, QString* err, const std::function<void(int)>& onProgress = {});// 提取无声视频，成功返回输出路径
+    static QString extractAudio(const QString& inPath, QString* err, const std::function<void(int)>& onProgress = {},
+                                const std::atomic<bool>* cancel = nullptr);// 提取音轨，成功返回输出路径
+    static QString extractVideo(const QString& inPath, QString* err, const std::function<void(int)>& onProgress = {},
+                                const std::atomic<bool>* cancel = nullptr);// 提取无声视频，成功返回输出路径
 private:
     void runJob(const QString& inPath, IStreamEngine& engine, const char* suffix, const QString& okMsg);// 统一流式引擎任务收尾
     std::atomic<bool>* cancelFlag = nullptr;// 服务装配的取消标志，转码分块循环检查

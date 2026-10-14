@@ -1,0 +1,16 @@
+# ninja log v7
+0	291	1791977783179049248	video_handler_autogen/timestamp	f37a078ff00dc664
+0	291	1791977783179049248	video_handler_autogen/mocs_compilation.cpp	f37a078ff00dc664
+0	291	1791977783179049248	/home/psh/VideoHandler/docs/tmp/linux-build/build-pre/video_handler_autogen/timestamp	f37a078ff00dc664
+0	291	1791977783179049248	/home/psh/VideoHandler/docs/tmp/linux-build/build-pre/video_handler_autogen/mocs_compilation.cpp	f37a078ff00dc664
+292	1237	1791977783188620610	CMakeFiles/video_handler.dir/home/psh/vh-prefix/src/service/dspdenoiser.cpp.o	35856cbb6eecfde
+293	1396	1791977783189342210	CMakeFiles/video_handler.dir/home/psh/vh-prefix/src/service/pitchshifter.cpp.o	582f3b46a5e82092
+293	2105	1791977783188966465	CMakeFiles/video_handler.dir/home/psh/vh-prefix/src/service/fftranscoder.cpp.o	4ba5ed9fd25a455c
+292	2204	1791977783188381259	CMakeFiles/video_handler.dir/home/psh/vh-prefix/src/service/aidenoiser.cpp.o	c3c0351ca05ca15e
+293	2204	1791977783189167445	CMakeFiles/video_handler.dir/home/psh/vh-prefix/src/service/mediaservice.cpp.o	d80754eb90594c62
+292	2641	1791977783188795291	CMakeFiles/video_handler.dir/home/psh/vh-prefix/src/service/ffextractor.cpp.o	973f9426980f35e4
+292	2681	1791977783187870137	CMakeFiles/video_handler.dir/video_handler_autogen/mocs_compilation.cpp.o	90c0c7456c279296
+292	2860	1791977783188155891	CMakeFiles/video_handler.dir/home/psh/vh-prefix/src/main.cpp.o	1026b280e302da99
+1238	2941	1791977784133135229	CMakeFiles/video_handler.dir/home/psh/vh-prefix/src/service/vocalseparator.cpp.o	4f0651825508f8c4
+1396	3814	1791977784291149470	CMakeFiles/video_handler.dir/home/psh/vh-prefix/src/view/mainwidget.cpp.o	617747435928af24
+3814	4566	1791977786709367394	video_handler	aa4e7d4a7a482d16

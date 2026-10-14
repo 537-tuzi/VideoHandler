@@ -14,6 +14,7 @@ MediaService::MediaService(QObject* parent)
 }
 
 MediaService::~MediaService() {
+    cancelFlag = true;// 先请求取消，否则 wait() 要等长任务自然跑完，关窗假死
     thread->quit();
     thread->wait();
     delete worker;// 线程已停，直接删安全

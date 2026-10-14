@@ -66,8 +66,9 @@ QString write_header(AVFormatContext* in, AVFormatContext* out, int idx) {
     return {};
 }
 
-// 只搬指定流的包，边搬边报进度
-QString copy_stream(AVFormatContext* in, AVFormatContext* out, int idx, const std::function<void(int)>& onProgress) {
+// 只搬指定流的包，边搬边报进度；cancel 为包粒度取消检查点（CLI 传空）
+QString copy_stream(AVFormatContext* in, AVFormatContext* out, int idx, const std::function<void(int)>& onProgress,
+                    const std::atomic<bool>* cancel) {
     AVStream* inSt = in->streams[idx];
     AVStream* outSt = out->streams[0];// 输出容器只有这一条流，包索引须重映射到它
     double durSec = in->duration > 0 ? in->duration * av_q2d(AV_TIME_BASE_Q) : 0.0;
@@ -75,6 +76,10 @@ QString copy_stream(AVFormatContext* in, AVFormatContext* out, int idx, const st
     if (!pkt) return QStringLiteral("内存不够");
     QString e;
     while (true) {
+        if (cancel && cancel->load()) {
+            e = QStringLiteral("已取消");
+            break;
+        }
         int ret = av_read_frame(in, pkt);
         if (ret < 0) break;// 读到尾或出错都收尾
         if (pkt->stream_index == idx) {
@@ -154,7 +159,8 @@ bool FFExtractor::probe(const QString& inPath, QString* info) {
     return true;
 }
 
-QString FFExtractor::extractAudio(const QString& inPath, QString* err, const std::function<void(int)>& onProgress) {
+QString FFExtractor::extractAudio(const QString& inPath, QString* err, const std::function<void(int)>& onProgress,
+                                  const std::atomic<bool>* cancel) {
     QString e;
     AVFormatContext* in = nullptr;
     AVFormatContext* out = nullptr;
@@ -170,7 +176,7 @@ QString FFExtractor::extractAudio(const QString& inPath, QString* err, const std
         if (!e.isEmpty()) break;
         e = write_header(in, out, idx);
         if (!e.isEmpty()) break;
-        e = copy_stream(in, out, idx, onProgress);
+        e = copy_stream(in, out, idx, onProgress, cancel);
         if (!e.isEmpty()) break;
         int ret = av_write_trailer(out);
         if (ret < 0) e = QStringLiteral("写文件尾失败：%1").arg(ff_err(ret));
@@ -179,7 +185,8 @@ QString FFExtractor::extractAudio(const QString& inPath, QString* err, const std
     return finish(e, &out, &in, &outPath, err);
 }
 
-QString FFExtractor::extractVideo(const QString& inPath, QString* err, const std::function<void(int)>& onProgress) {
+QString FFExtractor::extractVideo(const QString& inPath, QString* err, const std::function<void(int)>& onProgress,
+                                  const std::atomic<bool>* cancel) {
     QString e;
     AVFormatContext* in = nullptr;
     AVFormatContext* out = nullptr;
@@ -195,7 +202,7 @@ QString FFExtractor::extractVideo(const QString& inPath, QString* err, const std
         if (!e.isEmpty()) break;
         e = write_header(in, out, idx);
         if (!e.isEmpty()) break;
-        e = copy_stream(in, out, idx, onProgress);
+        e = copy_stream(in, out, idx, onProgress, cancel);
         if (!e.isEmpty()) break;
         int ret = av_write_trailer(out);
         if (ret < 0) e = QStringLiteral("写文件尾失败：%1").arg(ff_err(ret));
@@ -270,14 +277,14 @@ void FFExtractor::doSepVocals(const QString& inPath, bool instrumental) {
 
 void FFExtractor::doExtractAudio(const QString& inPath) {
     QString err;
-    QString out = extractAudio(inPath, &err, [this](int pct) { emit progress(pct); });
+    QString out = extractAudio(inPath, &err, [this](int pct) { emit progress(pct); }, cancelFlag);
     if (out.isEmpty()) emit jobDone(false, err);
     else emit jobDone(true, QStringLiteral("音轨提取完成：%1").arg(out));
 }
 
 void FFExtractor::doExtractVideo(const QString& inPath) {
     QString err;
-    QString out = extractVideo(inPath, &err, [this](int pct) { emit progress(pct); });
+    QString out = extractVideo(inPath, &err, [this](int pct) { emit progress(pct); }, cancelFlag);
     if (out.isEmpty()) emit jobDone(false, err);
     else emit jobDone(true, QStringLiteral("无声视频提取完成：%1").arg(out));
 }

@@ -1,0 +1,22 @@
+==== smoke run 2026-10-14 19:36:47 时长=7200s ====
+-- transcode
+OK: /home/psh/vh-test/out-transcode.wav
+-- denoise
+OK: /home/psh/vh-test/out-denoise.wav
+-- pitch
+OK: /home/psh/vh-test/out-pitch.wav
+-- extract-a
+OK: /home/psh/vh-test/tiny_audio.m4a
+-- extract-v
+OK: /home/psh/vh-test/tiny_mute.mp4
+-- 输出体检（ffprobe）
+codec_name=pcm_f32le sample_rate=44100 channels=2 duration=30.000000 <- /home/psh/vh-test/out-transcode.wav
+codec_name=pcm_f32le sample_rate=44100 channels=2 duration=30.000000 <- /home/psh/vh-test/out-denoise.wav
+codec_name=pcm_f32le sample_rate=44100 channels=2 duration=30.000000 <- /home/psh/vh-test/out-pitch.wav
+-- A1 RSS 对照（7200s 素材，Maximum resident set size）
+  修复前: 	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:41.82
+  修复前: 	Maximum resident set size (kbytes): 2937832
+  修复后: 	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:00.76
+  修复后: 	Maximum resident set size (kbytes): 58288
+  输出逐字节一致: PASS
+==== smoke run end ====
