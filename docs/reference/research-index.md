@@ -16,6 +16,12 @@
 | `research-realtime-audiostack.md` | WASAPI 延迟/miniaudio/VB-CABLE 条款/钟漂/150ms 预算 | FR-11（M4）、NFR-L* |
 | `research-fft-libraries.md` | pffft/kissfft/pocketfft 精度与 twiddle 实践 | WP-1.3（fft-rewrite） |
 | `research-model-mgmt-llm-infra.md` | HF 下载规范/llama.cpp 结构化输出/Qwen GGUF/whisper.cpp/silero/打包 | FR-8/FR-24/FR-A*、O4、NFR-M4 |
+| `research-streaming-pipelines.md` | 7 流式框架（SoX/GStreamer/JUCE/Web Audio/miniaudio…）× IStreamEngine 对照 + v2 接口 R1–R8 草案 | 架构审视（architecture-review.md）、NFR-L2、NFR-M1 |
+| `research-realtime-threading.md` | RT 铁律一手原文（Bencina/PortAudio/JUCE）/MMCSS/SPSC 队列/双线程模型/预算分解/注入法 | M4、NFR-L1/L2/L3、O3、架构审视 |
+| `research-qt-audio-apps.md` | Mixxx/LMMS/Hydrogen/Audacity 四仓实践 + Qt 官方线程文档 26 条；现状惯用项确认 + 隐患 H1–H8 | 架构审视、FR-24、A11–A13 |
+| `research-cpp-engine-patterns.md` | GCC 13/MinGW C++23 可用表/注册表模式（LLVM 式）/processInto 形态/CMake 现代惯例 | NFR-M1、FR-24、NFR-M4、A14 |
+
+> 2026-10-14 追加上 4 行（架构审视批，方法同前：一手信源 + 【已确认/倾向/未确认】标注；结论已汇入 `docs/spec/architecture-review.md` §4）。
 
 ## 2. 开放问题证据状态（REQUIREMENTS §10）
 

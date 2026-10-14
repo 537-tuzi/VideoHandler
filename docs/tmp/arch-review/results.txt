@@ -1,0 +1,21 @@
+== T1 radix-2 对朴素 DFT(long double) ==
+RADIX | n=   64 | 最大系数绝对误差=6.683e-06（相对谱峰 5.18e-07）| 往返误差=1.766e-06
+RADIX | n=  256 | 最大系数绝对误差=2.617e-05（相对谱峰 8.16e-07）| 往返误差=3.815e-06
+RADIX | n= 1024 | 最大系数绝对误差=2.040e-04（相对谱峰 2.65e-06）| 往返误差=1.168e-05
+RADIX | n= 2048 | 最大系数绝对误差=3.120e-04（相对谱峰 3.47e-06）| 往返误差=1.889e-05
+== T2 FftPlan 大尺寸往返 + Parseval ==
+PLAN | n= 6144 | 往返误差=2.666e-04 | Parseval 偏差=6.266e-05
+PLAN | n= 7680 | 往返误差=2.909e-04 | Parseval 偏差=6.738e-05
+PLAN | n= 8192 | 往返误差=3.248e-04 | Parseval 偏差=8.126e-05
+PLAN | n=12288 | 往返误差=1.346e-03 | Parseval 偏差=3.458e-04
+== T3 2 的幂尺寸 Bluestein vs radix-2 精度 ==
+H2H  | n= 4096 | Bluestein 相对 radix-2 最大系数偏差=7.584e-03（相对谱峰 5.23e-05）
+H2H  | n= 8192 | Bluestein 相对 radix-2 最大系数偏差=8.759e-03（相对谱峰 4.04e-05）
+== T4 耗时（完整往返，3 轮最优均值）==
+TIME | n= 4096 | radix-2 往返 0.121 ms     |   init 预计算 0.3 ms | FftPlan 往返 0.300 ms | 慢 2.5x
+TIME | n= 8192 | radix-2 往返 0.288 ms     |   init 预计算 0.7 ms | FftPlan 往返 0.712 ms | 慢 2.5x
+     |   init 预计算 0.6 msTIME | n= 6144 | FftPlan 往返 0.722 ms
+     |   init 预计算 0.6 msTIME | n= 7680 | FftPlan 往返 0.724 ms
+     |   init 预计算 1.2 msTIME | n=12288 | FftPlan 往返 1.601 ms
+== T5 分配行为 ==
+ALLOC| FftPlan::run 稳态 100 次：0 次分配 / 0 字节
