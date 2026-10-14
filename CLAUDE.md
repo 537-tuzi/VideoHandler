@@ -64,8 +64,8 @@ model/data.h         全局常量（kCanonicalRate=44100、后缀、模型相对
 5. `dspdenoiser` 50Hz 硬编码（60Hz 电网地区无效）。
 6. LGPL 合规：SoundTouch 静态链接 + FFmpeg 构建混用（gyan 导入库 + BtbN DLL）需修正（NFR-C3）。
 7. `IStreamEngine::process` 每次堆分配返回 vector——实时化前需加 `processInto` 零分配变体（NFR-L2）。
-8. `fftranscoder` 引擎输出缓冲曾全程驻留内存（2h@44.1k 立体声 ≈2.37GiB 破 NFR-P4；2026-10-14 架构审视 A1，`docs/spec/architecture-review.md`）——已热修 feedAi 分块后就地排水，Linux 已复验（2h 素材峰值 57MB vs 修复前 2.80GiB，输出逐字节一致；`docs/tmp/linux-build/smoke-results.txt`），**待 Windows 同款复验关闭 R12**。
-9. 引擎异常屏障缺失（架构审视 A2，未修，R13）：AiDenoiser `process/flush` 的 `sess->Run` 可抛 Ort::Exception 穿透至 std::terminate——须接口契约补「不得抛出」+ 引擎内 catch 归口 lastError() + runJob 兜底 catch（WP-1.0 收尾项）。
+8. `fftranscoder` 引擎输出缓冲曾全程驻留内存（2h@44.1k 立体声 ≈2.37GiB 破 NFR-P4；2026-10-14 架构审视 A1，`docs/spec/architecture-review.md`）——已热修 feedAi 分块后就地排水，Linux 已复验（2h 素材峰值 57MB vs 修复前 2.80GiB，输出逐字节一致；`docs/tmp/linux-build/smoke-results.txt`），**待 Windows 同款复验关闭 R12**（runbook：`docs/acceptance/wp-1.0-hotfix/round-3-windows.md`）。
+9. 引擎异常屏障缺失（架构审视 A2，R13）——**已修（2026-10-14）**：三层屏障落地（streamengine.h 契约「不得抛出」/ AiDenoiser process/flush catch 归口新覆写的 lastError() / runJob 兜底 catch）；Linux 错误注入验收通过（维度错位模型：修复前 SIGABRT+半成品残留 → 修复后干净 FAIL 无残留，process/flush 双路径，`docs/acceptance/wp-1.0-hotfix/round-2.md`），Windows 冒烟随 WP-1.0 round-3。
 
 ## 方向（详见 REQUIREMENTS.md 第 9 节）
 

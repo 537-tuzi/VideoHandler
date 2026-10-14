@@ -20,6 +20,7 @@ struct AiDenoiser::Impl {
     std::vector<float> imBuf, specBuf, freBuf, fimBuf;// 复用的计算缓冲
     std::vector<Ort::Value> states;
     bool started = false;
+    QString errMsg;// 运行期错误（契约：不得抛出，归口此处）
     int64_t totalIn = 0, totalOut = 0;
 
     bool readMetaInt(const Ort::ModelMetadata& meta, OrtAllocator* al, const char* key, int* out) {
@@ -187,6 +188,10 @@ bool AiDenoiser::ready() const {
     return impl_->sess != nullptr;
 }
 
+QString AiDenoiser::lastError() const {
+    return impl_->errMsg;
+}
+
 int AiDenoiser::inRate() const {
     return impl_->sampleRate;
 }
@@ -197,9 +202,13 @@ std::vector<float> AiDenoiser::process(const float* in, int64_t frames) {
     const int n = static_cast<int>(frames);
     impl_->totalIn += n;
     impl_->pending.insert(impl_->pending.end(), in, in + n);
-    while (static_cast<int>(impl_->pending.size()) >= impl_->hop) {
-        impl_->processHop(impl_->pending.data(), &out);
-        impl_->pending.erase(impl_->pending.begin(), impl_->pending.begin() + impl_->hop);
+    try {// 契约：不得抛出，Run 异常归口 lastError
+        while (static_cast<int>(impl_->pending.size()) >= impl_->hop) {
+            impl_->processHop(impl_->pending.data(), &out);
+            impl_->pending.erase(impl_->pending.begin(), impl_->pending.begin() + impl_->hop);
+        }
+    } catch (const Ort::Exception& e) {
+        impl_->errMsg = QStringLiteral("AI 降噪推理失败：%1").arg(QString::fromUtf8(e.what()));
     }
     impl_->totalOut += static_cast<int64_t>(out.size());
     return out;
@@ -208,13 +217,17 @@ std::vector<float> AiDenoiser::process(const float* in, int64_t frames) {
 std::vector<float> AiDenoiser::flush() {
     std::vector<float> out;
     if (!ready()) return out;
-    if (!impl_->pending.empty()) {// 残余补零成整 hop
-        std::vector<float> padded(static_cast<size_t>(impl_->hop), 0.f);
-        std::copy(impl_->pending.begin(), impl_->pending.end(), padded.begin());
-        impl_->processHop(padded.data(), &out);
-        impl_->pending.clear();
+    try {// 契约：不得抛出，Run 异常归口 lastError
+        if (!impl_->pending.empty()) {// 残余补零成整 hop
+            std::vector<float> padded(static_cast<size_t>(impl_->hop), 0.f);
+            std::copy(impl_->pending.begin(), impl_->pending.end(), padded.begin());
+            impl_->processHop(padded.data(), &out);
+            impl_->pending.clear();
+        }
+        if (impl_->started) impl_->processHop(impl_->zeroHop.data(), &out);
+    } catch (const Ort::Exception& e) {
+        impl_->errMsg = QStringLiteral("AI 降噪推理失败：%1").arg(QString::fromUtf8(e.what()));
     }
-    if (impl_->started) impl_->processHop(impl_->zeroHop.data(), &out);
     const int64_t remaining = impl_->totalIn - impl_->totalOut - static_cast<int64_t>(out.size());
     if (remaining < 0 && out.size() > static_cast<size_t>(-remaining))
         out.resize(out.size() - static_cast<size_t>(-remaining));// 总输出不得超总输入

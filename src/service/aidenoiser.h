@@ -16,6 +16,7 @@ public:
     int inChannels() const override { return 1; }// 单声道
     std::vector<float> process(const float* in, int64_t frames) override;
     std::vector<float> flush() override;
+    QString lastError() const override;// 运行期错误（推理失败等），空为无错
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

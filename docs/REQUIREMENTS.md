@@ -255,7 +255,7 @@
 | R10 | Agent 使范围失控风险翻倍 | 高 | 高 | 严格分层：v1 只做工作区+无头层，Agent 本体 v1.x（D5） |
 | R11 | 幻觉参数造成破坏性操作 | 中 | 高 | 三道校验闸 + 原件只读 + 每步确认（D7），机制兜底不依赖 LLM 靠谱 |
 | R12 | 离线转码内存无界破 NFR-P4（2026-10-14 架构审视 A1 实锤：引擎输出缓冲曾全程驻留内存，2h@44.1k/2ch 实测 2.80GiB > 2GB 红线） | 已发生 | 高 | **已热修**（feedAi 分块后就地排水）；Linux 已复验：2h 素材峰值 57MB、耗时 −40%、输出逐字节一致（`docs/tmp/linux-build/smoke-results.txt`）；Windows 同款复验后关闭（WP-1.0） |
-| R13 | 引擎运行期异常无屏障致进程崩溃（架构审视 A2：AiDenoiser `sess->Run` 可抛 Ort::Exception 穿透转码器与 worker 槽直达 std::terminate；同库 vocalseparator 却有 catch，错误通道不一致） | 低 | 高 | 接口契约补「process/flush 不得抛出」+ 引擎内 catch 归口 lastError() + runJob 兜底 catch；ORT 运行期错误注入验收（WP-1.0 收尾项） |
+| R13 | 引擎运行期异常无屏障致进程崩溃（架构审视 A2：AiDenoiser `sess->Run` 可抛 Ort::Exception 穿透转码器与 worker 槽直达 std::terminate；同库 vocalseparator 却有 catch，错误通道不一致） | 低 | 高 | **已修（2026-10-14）**：三层屏障落地（streamengine.h 契约「不得抛出」/ AiDenoiser process/flush catch 归口新覆写 lastError() / runJob 兜底 catch）；Linux 错误注入验收通过（维度错位模型：修复前 SIGABRT exit134 + 半成品残留，修复后 FAIL exit1 无残留，process/flush 双路径，`docs/acceptance/wp-1.0-hotfix/round-2.md`）；Windows 冒烟绿后随 WP-1.0 关闭 |
 
 ---
 

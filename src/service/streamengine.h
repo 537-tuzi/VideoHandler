@@ -4,6 +4,7 @@
 #include <vector>
 
 // 流式引擎统一接口：喂入交错样本，内部缓冲可致输出滞后；转码轨道按期望规格自动重采样
+// 契约：process/flush 不得抛出（ORT 等运行期异常须在引擎内捕获），失败归口 lastError() 供转码器查询
 class IStreamEngine
 {
 public:

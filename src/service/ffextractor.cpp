@@ -13,6 +13,8 @@
 #include <QFileInfo>
 #include <QStringList>
 
+#include <exception>// std::exception，runJob 兜底 catch 用
+
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -221,8 +223,15 @@ void FFExtractor::runJob(const QString& inPath, IStreamEngine& engine, const cha
     QFileInfo fi(inPath);
     const QString outPath = fi.absolutePath() + "/" + fi.completeBaseName() + suffix + ".wav";
     QString err;
-    QString out = FFTranscoder::transcodeStreamWav(inPath, outPath, engine, cancelFlag, &err,
-                                                   [this](int pct) { emit progress(pct); });
+    QString out;
+    try {// 兜底屏障（A2）：引擎契约失效或其他异常不得穿透 worker 槽致 std::terminate
+        out = FFTranscoder::transcodeStreamWav(inPath, outPath, engine, cancelFlag, &err,
+                                               [this](int pct) { emit progress(pct); });
+    } catch (const std::exception& e) {
+        err = QStringLiteral("任务异常终止：%1").arg(QString::fromUtf8(e.what()));
+    } catch (...) {
+        err = QStringLiteral("任务异常终止（未知异常）");
+    }
     if (out.isEmpty()) emit jobDone(false, err);
     else emit jobDone(true, okMsg + QStringLiteral("：%1").arg(out));
 }

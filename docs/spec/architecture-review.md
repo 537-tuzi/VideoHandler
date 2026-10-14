@@ -182,3 +182,4 @@ util/fft.h、ffutil.h、model/data.h  叶子工具与常量
 - FFT 耗时为 g++15/Linux 指示值，MinGW 13.1/Win 数字待 Windows 工具链复核。
 - 本机编译证据未覆盖 ORT/SoundTouch/FFmpeg 链路（third_party 不入 Linux 环境）——引擎运行时行为（含 A2 的真实触发概率）只能 Windows 实测或读码推定。
 - **代理断言复核记录（工作原则 13/14）**：cpp-engine-patterns 代理断言 vocalseparator.h:17「非虚遮蔽基类虚函数」——主会话独立比对签名后**推翻**（同签名=隐式虚覆写，运行时正确），降级为 A14 卫生项。其余代理载荷性断言抽查（A11 的 mediaservice.cpp:17-18、A1 的 fftranscoder 调用点）均与源码一致。
+- **A2 落地复核（2026-10-14 晚，WP-1.0 收尾）**：三层屏障已进源码（streamengine.h 契约注释 / aidenoiser process+flush catch→lastError（新覆写）+ Impl::errMsg / ffextractor runJob 兜底 catch）。上条「本机编译证据未覆盖 ORT/SoundTouch/FFmpeg 链路」**部分失效**：本机 Linux 测试构建（`docs/tmp/linux-build/`）链的是 apt 系统库 ORT/FFmpeg/SoundTouch，错误注入走的是真实 `Ort::Session::Run`——维度错位模型注入下，修复前 SIGABRT(exit 134)+半成品残留，修复后干净 FAIL(exit 1)+无残留，process 与 flush 两条路径分别验证（证据 `docs/acceptance/wp-1.0-hotfix/round-2.md`）。残余待 Windows：third_party 特定版本组合（BtbN/gyan/ORT 1.30 Win）与 GUI 交互面。

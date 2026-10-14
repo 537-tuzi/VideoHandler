@@ -1,0 +1,16 @@
+case,说明,round-1(Linux 热修),round-2(Linux A2),round-3(Windows 复验)
+compile-linux,apt 系统库 ORT/FFmpeg/SoundTouch + Qt6 构建,PASS,PASS,N/A
+cli-5verbs,transcode/denoise/pitch/extract-a/extract-v 五动词,PASS,PASS,PENDING
+ffprobe-health,输出 pcm_f32le/44100/2ch/时长一致,PASS,PASS,PENDING
+a1-rss-duel,2h 素材 RSS 修复前 vs 后（阈值 ≤2GB）,PASS(2.80GiB→57MB),PASS(58MB),PENDING
+byte-identity,修复前后输出逐字节一致,PASS,PASS,PENDING
+a2-inject-run-pre,维度错位模型@修复前（预期崩溃证明修复必要）,N/A,PASS(SIGABRT/134),N/A
+a2-inject-run-post,维度错位模型@修复后 process 路径,N/A,PASS(FAIL/1/无残留),PENDING(可选)
+a2-inject-flush-post,维度错位模型@修复后 flush 路径（<1hop 输入）,N/A,PASS(FAIL/1/无残留),N/A
+a2-inject-setup,垃圾文件/不存在路径（setup 期通道回归）,N/A,PASS(FAIL/1),PENDING(可选)
+sep-error-channel,分离器错误通道回归（垃圾模型）,N/A,PASS(FAIL/1),PENDING(可选)
+compile-mingw,产品 CMake MinGW 构建,N/A,N/A,PENDING
+cli-with-models,带真实模型跑 ai-denoise/sep 两动词,N/A,N/A,PENDING
+gui-cancel,GUI 任务取消 ≤1s + 半成品清理（A12/A11 交互面）,代码读,N/A,PENDING
+gui-close-window,长任务中关窗不假死（A11）,代码读,N/A,PENDING
+rss-windows,≥2h 素材 Windows 峰值 RSS ≤2GB,N/A,N/A,PENDING
