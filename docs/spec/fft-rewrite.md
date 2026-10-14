@@ -14,10 +14,10 @@
 ## 2. 设计
 
 - **API 不变**：`fft_forward/fft_inverse/FftPlan` 签名与语义保持，引擎零改动。
-- **twiddle 主表（double）**：按最大长度一次性预计算 `cos/sin(2πk/n)` 的 double 主表；基-2 蝶形按 len 抽取步进使用 float 拷贝，消灭递推累积误差。表按需懒建、进程内缓存（工作点固定 512/6144/16384 几个尺寸，内存可忽略）。
+- **twiddle 主表（double）**：按最大长度一次性预计算 `cos/sin(2πk/n)` 的 double 主表；基-2 蝶形按 len 抽取步进使用 float 拷贝，消灭递推累积误差。表按需懒建、进程内缓存（工作点固定 512/7680/16384 几个尺寸——MDX 实际 n_fft=7680，Bluestein 内层 m=16384，见 `separator-output-validation.md`；内存可忽略）。业界对照：主流库（pffft/kissfft/pocketfft/ducc0）一致 setup 期预计算、无一家蝶形内递推，FFTW 官方 accuracy 页明确点名递推是 FFT 误差最可能来源（见 `research-fft-libraries.md`；2026-10-14 反证补注：递推实现确实存在于 GSL/NR，但要么 double 递推变量、要么 Buneman 稳定形式，本项目 float 链式复乘恰处 FFTW 误差分类最差档，结论不变——`falsify-fft-dfn3.md`）。
 - **FftPlan 直通分支**：`init(len)` 若 len 为 2 的幂 → 走基-2 路径（零 chirp 开销）；否则 Bluestein。
-- **Bluestein 加固**：b 序列的 m 点前向 FFT 升 double（仅 init 期一次，成本无关紧要）；运行期 chirp 预乘/后乘用 double 角表直接算（`fft.h:93-99/114-121` 处升 double）；频域卷积保持 float（实时化前的性能折中）。若 parity 实测不达 −60dB，再全量升 double——升级路径已留好（模板化 `fft_core<T>`）。
-- **不做**：混合基（6144=3×2^11 的 radix-3 分解）——复杂度远超收益，Bluestein+表足够；real-FFT 专用优化——同理由推迟。
+- **Bluestein 加固**：b 序列的 m 点前向 FFT 升 double（仅 init 期一次，成本无关紧要）；运行期 chirp 预乘/后乘用 double 角表直接算（`fft.h:93-99/114-121` 处升 double）；**chirp 序列改用 pocketfft 式整数索引查单位根表拼接（`coeff += 2m−1 (mod 2n)`，零角乘误差）**；频域卷积保持 float（实时化前的性能折中）。若 parity 实测不达 −60dB，再全量升 double——升级路径已留好（模板化 `fft_core<T>`）。
+- **不做**：混合基（6144=3×2^11 的 radix-3 分解）——主流库对 6144 均走 radix-3，但自研复杂度远超收益，Bluestein+表足够（约 2.5–2.7 倍开销，离线无碍；**实时化前若 6144 成热点，优先评估 vendor pocketfft（精度最匹配）或 pffft fork（实时设计最匹配），不自写 radix-3**）；real-FFT 专用优化——同理由推迟。
 
 ## 3. 验证（FFT-PR 用例组，入 engine-parity matrix）
 

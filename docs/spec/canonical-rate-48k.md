@@ -14,7 +14,7 @@
 **输出规格 = 跟随源**（非「canonical 改 48k」）：
 
 - `FFTranscoder::transcodeStreamWav` 增加输出规格参数（rate/channels），默认取**解码源的实际规格**（限幅 8k–192k；声道取 min(源, 2)）；引擎期望规格逻辑不变（`inRate/inChannels` 照旧，swr 链照旧）。
-- 理由：把默认输出改成 48k 只是换一种损害（44.1k 源被升采样）；「跟随源」对任何源都零无谓重采样——DSP/变调引擎采样率无关（`dspdenoiser.cpp:14-36` 系数已按 rate 计算；SoundTouch `setSampleRate` 任意），48k 源全链 48k 直通，bypassOut 条件改为「引擎规格 == 输出规格」自然成立。
+- 理由：把默认输出改成 48k 只是换一种损害（44.1k 源被升采样）；「跟随源」对任何源都零无谓重采样——DSP/变调引擎采样率无关（`dspdenoiser.cpp:14-36` 系数已按 rate 计算；SoundTouch `setSampleRate` 任意），48k 源全链 48k 直通，bypassOut 条件改为「引擎规格 == 输出规格」自然成立。另：规划中的 DFN3 质量档原生 48k（`research-deepfilternet3.md` 已核 config sr=48000），跟随源策略与其工作点天然对齐。
 - GTCRN/MDX 路径：模型工作点不可变，48k 源仍要在引擎段重采样，但输出可回源率（48k）——回转一次是「回源」不是「去 44.1k」，符合 NFR-Q3 文义；代价是多一次 swr，默认关闭（输出跟引擎规格走），仅 FR-16（输出格式选择，v1.x）时暴露给用户。**本工作包不改这两条路径的行为。**
 - `kCanonicalRate` 保留但语义收窄为「无源可依时的兜底」（探测失败/合成链路），不再作为输出默认。
 

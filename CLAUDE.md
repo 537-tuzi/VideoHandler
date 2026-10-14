@@ -59,7 +59,7 @@ model/data.h         全局常量（kCanonicalRate=44100、后缀、模型相对
 
 1. **无 parity 测试**：GTCRN/MDX 前端为手推实现，须对照 sherpa-onnx / audio-separator 建 golden 测试（NFR-Q1，最高优先）。
 2. `util/fft.h`：Bluestein 全 float 有精度风险；MDX 对 2 的幂帧也走 Bluestein（慢且亏精度，应直通基-2）；radix-2 无 twiddle 预计算表。
-3. `vocalseparator` 只验输入 shape，从不验输出 shape/布局（换模型会静默产废音）。
+3. `vocalseparator` 输出读法与参数双双有错（2026-10-14 调研实锤，`docs/reference/research-mdx-uvr-audio-separator.md`）：输出按 frame-major 读，实际是 plane-major `[b,4,dimF,dimT]`；`nFft=dimF*2` 推导错误，MDX 模型无 metadata、须按「末尾 10MiB MD5 查 UVR 官方参数表」取参（Voc_FT 实为 n_fft=7680、compensate=1.021）——现实现对 Voc_FT 产出废音。修复方案见 `docs/spec/separator-output-validation.md`。
 4. `kCanonicalRate=44100` 对视频源（48k）造成两次重采样；canonical 应改 48k 可配置（NFR-Q3）。
 5. `dspdenoiser` 50Hz 硬编码（60Hz 电网地区无效）。
 6. LGPL 合规：SoundTouch 静态链接 + FFmpeg 构建混用（gyan 导入库 + BtbN DLL）需修正（NFR-C3）。
@@ -69,7 +69,7 @@ model/data.h         全局常量（kCanonicalRate=44100、后缀、模型相对
 
 - 执行顺序：**正确性兜底（P0 债 1–5）→ 离线闭环（注册表/DFN3/管线串联/批处理）→ RVC 变声 → 实时化**。
 - 架构演进：引擎注册表（NFR-M1）+ 无头命令层（FR-24，GUI 与未来 Agent 共用）+ 工作区版本化（FR-A4）。
-- 开放问题（动工前须关闭）：O2 ContentVec 替代（变声开发前）、O3 RVC 延迟实测（实时化前）、O1/O4 许可证核验（发版前）。
+- 开放问题：仅剩 O3 RVC 延迟实测（实时化前，真机脉冲法；v1.2 定级「未证实」，变声链最坏算术 181ms 超支）。O1/O2/O4 已于 2026-10-14 调研关闭（`docs/reference/research-index.md`）；残余 = 发版前法务复核项（sherpa 书面确认、ContentVec 作者 MIT 声明确认——权重继承链已证不存在、Qwen 逐仓库 LICENSE 核对，随 NFR-C2 落实）。
 
 ## 红线
 

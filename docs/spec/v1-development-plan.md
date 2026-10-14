@@ -2,18 +2,18 @@
 
 - 日期：2026-10-13
 - 性质：开工前快照（spec，不回头维护；进展追踪见 `docs/acceptance/<feature>/goal.md`）
-- 输入基线：`docs/REQUIREMENTS.md` v1.0（决策 D1–D7、FR/NFR、风险 R1–R11、执行顺序）
+- 输入基线：`docs/REQUIREMENTS.md` v1.1（决策 D1–D7、FR/NFR、风险 R1–R11、执行顺序）
 - 现状代码：离线核心已完成（FR-2/5/6/12、FR-3/4 各一半），带五项 P0 质量债
 
 ## 1. 里程碑总览
 
 | 里程碑 | 主题 | 出口条件（DoD） | 阻塞的开放问题 |
 |---|---|---|---|
-| M1 | 正确性兜底（P0 债 1–5 + 测试/CI 基建） | `acceptance/engine-parity/matrix.csv` 全绿；CI Linux+Windows 双跑绿；NFR-Q1/Q2/Q3 有量化证据 | 无（O1 仅阻塞发版） |
+| M1 | 正确性兜底（P0 债 1–5 + 测试/CI 基建） | `acceptance/engine-parity/matrix.csv` 全绿；CI Linux+Windows 双跑绿；NFR-Q1/Q2/Q3 有量化证据 | 无（O1 已于 2026-10-14 关闭） |
 | M2 | 离线闭环（命令层/注册表/工作区/管线/批处理/模型管理/DFN3） | FR-1/4/8/9/10/13-前置、FR-24、FR-A4、NFR-M1 验收通过；GUI 全操作走命令层 | 无 |
-| M3 | RVC 变声（FR-7） | **O2 关闭后方可开工**；FR-7 验收（REQUIREMENTS §7） | O2（ContentVec 替代） |
+| M3 | RVC 变声（FR-7） | FR-7 验收（REQUIREMENTS §7）；O2 已关闭（2026-10-14，ContentVec 为 MIT、R1 降级），无前置闸门 | 无（O2 已关闭） |
 | M4 | 实时化（FR-11） | **O3 实测达标后方可开工**；round-trip ≤150ms 实测存证；NFR-L1/L2/L3 | O3（延迟实测） |
-| 发版 | v1.0 tag | O1/O4 关闭；NFR-C2/C3/C5 落实；全局门禁：parity + eval 全绿（REQUIREMENTS §7） | O1、O4 |
+| 发版 | v1.0 tag | O1/O4 已关闭（2026-10-14），残余法务复核项随 NFR-C2 落实（sherpa 书面确认、ContentVec 权重传递链）；NFR-C2/C3/C5；全局门禁：parity + eval 全绿（REQUIREMENTS §7） | 无（O1/O4 已关闭） |
 
 依据：执行顺序「正确性兜底 → 离线闭环 → 变声 → 实时化」（REQUIREMENTS §9）。
 
@@ -39,8 +39,8 @@
 
 ## 4. M3/M4 前置闸门
 
-- M3 开工前必须关闭 **O2**（ContentVec 替代特征提取器可行性，R1 高风险）；未关闭不得写 RVC 代码。
-- M4 开工前必须完成 **O3**（RVC chunk 推理延迟最小 benchmark，R2）；实测数据决定实时架构是否成立。
+- ~~M3 开工前必须关闭 **O2**~~ **O2 已于 2026-10-14 关闭**（ContentVec 实为 MIT，R1 降级为低×中；REQUIREMENTS v1.1）——M3 无前置闸门，残余法务复核移至发版期随 NFR-C2 落实。
+- M4 开工前必须完成 **O3**（RVC chunk 推理延迟最小 benchmark，R2，真机脉冲法）；实测数据决定实时架构是否成立。
 - 均为「先实测/先核验，后动工」闸门，不允许边写边赌。
 
 ## 5. 横切约定
