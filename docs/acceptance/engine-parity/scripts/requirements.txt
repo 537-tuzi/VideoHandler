@@ -1,0 +1,29 @@
+# WP-1.1 parity 参考实现依赖（Linux 本机 ~/.local 或 test/pydeps；CI 侧直接 pip install）
+# 版本锁定原则：直接依赖精确锁版本，传递依赖由 pip 解析（torch 锁 CPU 源）。
+#
+# 本机实跑版本（2026-10-18，python3.14）：
+#   scipy==1.18.1 / sherpa-onnx==1.13.8 / soundfile（DSP、GTCRN 金样本，装 ~/.local）
+#   audio-separator==0.47.0 + torch 2.14.1+cpu + onnxruntime 1.31.0 + librosa 1.0.0
+#   + onnx2torch-py313 + torchvision 0.29.1+cpu + pydub/resampy/samplerate/einops/beartype
+#   + six/audioread（MDX 金样本，装 test/pydeps，PYTHONPATH 注入）
+#
+# ⚠ audio-separator 0.47.0 在 py3.14 无法整体安装：硬依赖 diffq（sys_platform!="win32"）
+#   无 cp314 wheel 且源码构建失败；实证 MDX 路径不 import diffq（仅 demucs 用，round-2 §1）。
+#   绕行：--no-deps 装本体 + 定向装运行集 + torch 走 CPU 源，见下方命令块。
+#   所有 pip 加 TMPDIR=…/test/tmp（默认 /tmp 是 tmpfs 有配额，torch 级包会撞 Errno 122）。
+#
+# --- 环境重建命令（仓库根执行）---
+#   pip3 install --user --break-system-packages scipy sherpa-onnx soundfile
+#   pip3 download --no-deps --dest test/pipdl "audio-separator==0.47.0"
+#   pip3 install --break-system-packages --no-cache-dir --target test/pydeps --no-deps \
+#     test/pipdl/audio_separator-0.47.0-py3-none-any.whl
+#   pip3 install --break-system-packages --no-cache-dir --target test/pydeps --no-deps onnx2torch-py313
+#   TMPDIR=test/tmp pip3 install --break-system-packages --no-cache-dir --target test/pydeps \
+#     tqdm requests pyyaml audioread librosa onnx onnxruntime six pydub resampy samplerate einops beartype
+#   TMPDIR=test/tmp pip3 install --break-system-packages --no-cache-dir --target test/pydeps \
+#     --index-url https://download.pytorch.org/whl/cpu torch torchvision
+#   运行：PYTHONPATH=test/pydeps python3 docs/acceptance/engine-parity/scripts/gen_golden.py mdx <素材>
+#
+# audio-separator wheel SHA256（756f3b62…，2026-10-18 取自 PyPI）：
+#   audio_separator-0.47.0-py3-none-any.whl
+#   756f3b620d78e581a117c6b6d96fe4f0eafc3432ab2824cb11532b4868bfd9a8

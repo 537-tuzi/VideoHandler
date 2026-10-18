@@ -11,7 +11,7 @@ NFR-Q1 落地：五引擎对照官方/独立参考实现的数值 parity 测试�
 | SG-1 基建 | 素材生成 gen_inputs.py + 比较器 compare.py + fixtures.json 哈希防漂移 | round-1 完成 |
 | SG-2 DSP parity | scipy 双精度 RBJ+lfilter 参考 vs dspdenoiser（PAR-DS） | round-1 全绿（hum50 走 float32 同构参考分级判据，理由 round-1 §2） |
 | SG-3 GTCRN parity | sherpa-onnx 同模型推理参考 vs aidenoiser（PAR-GT，对齐点=首 hop 吞吐约定） | round-1 未收敛：判据修订（残差/RMS输入，−59.4dB）+ 两引擎债实锤（帧网格半窗偏移、首尾窗分母补偿缺），round-2 修后复测 |
-| SG-4 MDX parity | audio-separator 官方管线 vs vocalseparator（PAR-MD，边界=反射填充） | round-1 受阻（torch 554MB 撞 ~/.local 配额，--target 重定向后台进行中），round-2 跑 |
+| SG-4 MDX parity | audio-separator 官方管线 vs vocalseparator（PAR-MD，边界=反射填充） | round-2 落地并首轮对照：未收敛——幅度约定实锤（判据已修 --fit-scale）+ 纯音泄漏差 23dB 引擎前端谱构嫌疑（主）+ 块级 OLA vs 帧级 WOLA 架构差异（次），round-3 判别归因 |
 | SG-5 变调性质 | pitch(+n)∘pitch(−n) 往返恒等 + 长度一致（PAR-PT，无独立参考） | round-1 全绿（谱判据） |
 | SG-6 接入 CI | parity 套件并入 ci-smoke.sh（依赖 venv 存在时跑）+ 依赖版本锁依赖矩阵 | 待做（依赖 SG-3/4 收敛） |
 
@@ -33,5 +33,8 @@ FFT 性质五件套（FFT-PR）已在 WP-1.3 落地并入 ci-smoke，不重复�
 - **两笔 GTCRN 引擎债**（round-1 实锤，处置待拍板）：① 前端缺 center-reflect 半窗 pad（帧网格错半窗，对齐后残差 −33.8→−57.5dB）；② 逆变换缺窗-OLA 分母补偿（首尾段最差 −51.6dB）。改动落 aidenoiser.cpp 前端。
 - **DSP 精度债**（round-1 新增建议）：float32 系数量化把 Q30 陷波理论深度吃到 −26.7dB（double −203.7dB），建议随 WP-1.6 动 dspdenoiser 时 double 化；WP-1.1 不改引擎，hum50 判据分级处理。
 - sine16mo 用例废除（非模型工作点），PAR-GT 终判改用真实语音素材（许可核定后引入）。
-- sherpa-onnx 版本 1.13.8、scipy 1.18.1 已锁定；audio-separator 0.47.0 安装受阻中（详 round-1 §4）。
+- sherpa-onnx 版本 1.13.8、scipy 1.18.1 已锁定；audio-separator 0.47.0 round-2 落地（绕 diffq：py3.14 无 wheel 且 MDX 路径不用它；环境配方固化 scripts/requirements.txt）。
+- **MDX 参考幅度约定（round-2 实锤）**：参考输出=模型输出×s×peak（s=0.9/peak 当 peak>0.9 否则 1），三素材拟合增益与理论全吻合；parity 判据须去增益（compare.py --fit-scale）。
+- **MDX 纯音泄漏差 23dB（round-2 新引擎嫌疑）**：sine1k 下 DUT voc 泄漏 0.233 vs 参考 0.017，宽带却 corr 0.97——指向引擎前端谱构（dimF 截取/高频重建/前 3 bin 置零），round-3 判别实验归因后决定是否立债（与 GTCRN 两债一并处置）。
+- odd 素材（0.165s）触发引擎最短 ~0.17s 契约，MDX 边界用例换 odd1s（≈1s 非整 hop）。
 

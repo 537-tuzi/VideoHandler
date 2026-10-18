@@ -55,6 +55,7 @@ CASES = [
     ('white16mo', white(5.0, SR_MO, 1),        SR_MO, 'GTCRN 全频带'),
     ('sine16mo',  sine(1000, 5.0, SR_MO, 1),   SR_MO, 'GTCRN sanity'),
     ('odd',       white(1024 * 7 + 123, 0, 0, 0) if False else None, SR_ST, '非整 hop 尾（1024*7+123 样本）'),
+    ('odd1s',     None,                             SR_ST, '非整 hop 尾·1s（1024*43+123，MDX 用：引擎契约最短 ~0.17s，odd 太短被拒）'),
     ('short',     white(300 / SR_ST, SR_ST, 2), SR_ST, '短于 1 hop（300 样本）'),
     ('multi12s',  white(12.0, SR_ST, 2),       SR_ST, '多 batch（>dimT 帧，MDX 批间衔接）'),
 ]
@@ -67,16 +68,21 @@ def main():
         print(f'CHECK OK: 将生成 {len(CASES)} 组素材 → {OUT}')
         return
     OUT.mkdir(parents=True, exist_ok=True)
+    # 增量合并：重生成素材不得抹掉 gen_golden 登记的 golden_* 哈希
+    old = json.loads((OUT / 'fixtures.json').read_text()) if (OUT / 'fixtures.json').is_file() else {}
     fixtures = {}
     for name, arr, sr, _ in CASES:
-        if name == 'odd':  # 非整 hop：取 white 的前 1024*7+123 样本
-            arr = white(5.0, SR_ST, 2)[:1024 * 7 + 123]
+        if name in ('odd', 'odd1s'):  # 非整 hop：取 white 的前 N 样本
+            n = 1024 * 7 + 123 if name == 'odd' else 1024 * 43 + 123
+            arr = white(5.0, SR_ST, 2)[:n]
         f32 = OUT / f'{name}.f32'
         wav = OUT / f'{name}.wav'
         arr.tofile(f32)
         wavfile.write(wav, sr, arr)
-        fixtures[name] = {'f32': sha256(f32), 'wav': sha256(wav),
-                          'frames': int(arr.shape[0]), 'sr': sr, 'ch': int(arr.shape[1])}
+        entry = {'f32': sha256(f32), 'wav': sha256(wav),
+                 'frames': int(arr.shape[0]), 'sr': sr, 'ch': int(arr.shape[1])}
+        entry.update({k: v for k, v in old.get(name, {}).items() if k.startswith('golden_')})
+        fixtures[name] = entry
         print(f'{name}: {arr.shape[0]} 帧 @{sr}/{arr.shape[1]}ch')
     (OUT / 'fixtures.json').write_text(json.dumps(fixtures, indent=1))
     print(f'fixtures.json 已写 {OUT}')
