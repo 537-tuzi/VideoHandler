@@ -59,13 +59,13 @@ model/data.h         全局常量（kCanonicalRate=44100、后缀、模型相对
 
 1. **无 parity 测试**：GTCRN/MDX 前端为手推实现，须对照 sherpa-onnx / audio-separator 建 golden 测试（NFR-Q1，最高优先）。
 2. `util/fft.h`：Bluestein 全 float 有精度风险；MDX 对 2 的幂帧也走 Bluestein（慢且亏精度，应直通基-2）；radix-2 无 twiddle 预计算表。
-3. `vocalseparator` 输出读法与参数双双有错（2026-10-14 调研实锤，`docs/reference/research-mdx-uvr-audio-separator.md`）：输出按 frame-major 读，实际是 plane-major `[b,4,dimF,dimT]`；`nFft=dimF*2` 推导错误，MDX 模型无 metadata、须按「末尾 10MiB MD5 查 UVR 官方参数表」取参（Voc_FT 实为 n_fft=7680、compensate=1.021）——现实现对 Voc_FT 产出废音。修复方案见 `docs/spec/separator-output-validation.md`。
+3. `vocalseparator` 输出读法与参数双双有错（2026-10-14 调研实锤，`docs/reference/research-mdx-uvr-audio-separator.md`）：输出按 frame-major 读，实际是 plane-major `[b,4,dimF,dimT]`；`nFft=dimF*2` 推导错误，MDX 模型无 metadata、须按「末尾 10MiB MD5 查 UVR 官方参数表」取参（Voc_FT 实为 n_fft=7680、compensate=1.021）——现实现对 Voc_FT 产出废音。修复方案见 `docs/spec/separator-output-validation.md`。2026-10-17 真模型首跑另实锤 avail 截断除法假帧越界（`process`/`flush` 两处，已修，Linux gdb 复验；Windows MinGW 无 `_GLIBCXX_ASSERTIONS` 时同类越界为**静默内存破坏**），且分离路径稳态 RSS ~2.6GB 破 NFR-P4（非泄漏，ORT 稳态开销）——两项证据与候选实验见 `docs/acceptance/wp-1.0-hotfix/round-3.md`，均随 WP-1.4 一并处理。
 4. `kCanonicalRate=44100` 对视频源（48k）造成两次重采样；canonical 应改 48k 可配置（NFR-Q3）。
 5. `dspdenoiser` 50Hz 硬编码（60Hz 电网地区无效）。
 6. LGPL 合规：SoundTouch 静态链接 + FFmpeg 构建混用（gyan 导入库 + BtbN DLL）需修正（NFR-C3）。
 7. `IStreamEngine::process` 每次堆分配返回 vector——实时化前需加 `processInto` 零分配变体（NFR-L2）。
-8. `fftranscoder` 引擎输出缓冲曾全程驻留内存（2h@44.1k 立体声 ≈2.37GiB 破 NFR-P4；2026-10-14 架构审视 A1，`docs/spec/architecture-review.md`）——已热修 feedAi 分块后就地排水，Linux 已复验（2h 素材峰值 57MB vs 修复前 2.80GiB，输出逐字节一致；`docs/tmp/linux-build/smoke-results.txt`），**待 Windows 同款复验关闭 R12**（runbook：`docs/acceptance/wp-1.0-hotfix/round-3-windows.md`）。
-9. 引擎异常屏障缺失（架构审视 A2，R13）——**已修（2026-10-14）**：三层屏障落地（streamengine.h 契约「不得抛出」/ AiDenoiser process/flush catch 归口新覆写的 lastError() / runJob 兜底 catch）；Linux 错误注入验收通过（维度错位模型：修复前 SIGABRT+半成品残留 → 修复后干净 FAIL 无残留，process/flush 双路径，`docs/acceptance/wp-1.0-hotfix/round-2.md`），Windows 冒烟随 WP-1.0 round-3。
+8. `fftranscoder` 引擎输出缓冲曾全程驻留内存（2h@44.1k 立体声 ≈2.37GiB 破 NFR-P4；2026-10-14 架构审视 A1，`docs/spec/architecture-review.md`）——已热修 feedAi 分块后就地排水，Linux 已复验（2h 素材峰值 57MB vs 修复前 2.80GiB，输出逐字节一致；`docs/tmp/linux-build/smoke-results.txt`），**待 Windows 同款复验关闭 R12**（runbook：`docs/acceptance/wp-1.0-hotfix/round-4-windows.md`）。
+9. 引擎异常屏障缺失（架构审视 A2，R13）——**已修（2026-10-14）**：三层屏障落地（streamengine.h 契约「不得抛出」/ AiDenoiser process/flush catch 归口新覆写的 lastError() / runJob 兜底 catch）；Linux 错误注入验收通过（维度错位模型：修复前 SIGABRT+半成品残留 → 修复后干净 FAIL 无残留，process/flush 双路径，`docs/acceptance/wp-1.0-hotfix/round-2.md`），Windows 冒烟随 WP-1.0 round-4（runbook：`docs/acceptance/wp-1.0-hotfix/round-4-windows.md`）。
 
 ## 方向（详见 REQUIREMENTS.md 第 9 节）
 

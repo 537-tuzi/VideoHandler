@@ -37,3 +37,10 @@
 
 - 不做「任意模型自动适配」（过度设计）：只支持契约相符的 MDX-Net，不符就明确报错引导换模型（NFR-R4 精神：不崩溃、不静默）。
 - `kHop=1024` 硬编码（`vocalseparator.cpp:12`）维持现状：UVR 全系恒定，无元数据可读；在代码注释里已说明，不加配置项。（2026-10-14 反证坐实：kuielab 侧证明 MDX-Net 全系 hop=1024；bs_roformer hop=441 属另一架构，不在本引擎范围。）
+
+## 4. 2026-10-17 真模型首跑新证据（`acceptance/wp-1.0-hotfix/round-3.md`，补录）
+
+- **avail 截断除法假帧越界——已单独热修（先于本 WP 执行）**：真 UVR 模型首个 `--sep-vocals` 即 SIGABRT（gdb 栈 `analyzeFrame` 内 `inQ` 越界）。根因 = `process`/`flush` 的 `(pEnd − win − nextFrame·kHop)/kHop + 1` 在分子 ∈ (−kHop, 0) 时向零截断得 0 → avail=1 → 对数据不足的帧做分析。修复 = `reach < 0` 先挡（`vocalseparator.cpp:259-261`、`:292-293`）。与 §1 两 bug 无关（推理已跑到才崩），但同文件同函数族，记录防回退；⚠ Windows MinGW 无 `_GLIBCXX_ASSERTIONS`，同类越界为静默内存破坏。
+- **模型形状事实**：onnx 直读 Voc_FT 输入 `['batch_size', 4, 3072, 256]`（动态 batch、零 metadata）——与 §1 推断一致；现 setup 的 shape 校验（rank=4、shape[1]==4）可放行该模型，查表机制仍是唯一取参通路。
+- **分离路径稳态 RSS ~2.6GB——并入本 WP 范围（NFR-P4）**：5s=1.40GB / 30s=2.59GB / 120s=2.58GB，随时长持平 → 非泄漏，是 ORT 稳态开销（自管 tensor 仅 12.6MB）。压线实验顺位：① `SessionOptions::EnableCpuMemArena(false)`；② dimT 分块（与 §2「分块 demix」议题合流做）。
+- 输出响度参照（正弦素材）：out-voc mean −62.3dB（非静音废音，符合 §1 判断）；out-ai（GTCRN）mean −75.5dB。

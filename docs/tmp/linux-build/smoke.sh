@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# smoke.sh — Linux 测试构建后的 CLI 冒烟 + A1 RSS 对照（2026-10-14 热修验证）
+# smoke.sh — Linux 测试构建后的 CLI 冒烟 + A1 RSS 对照（2026-10-14 热修验证；2026-10-17 增带模型三动词，模型在 $WORK/models 即跑、缺省跳过）
 # 用法：./smoke.sh [素材时长秒，默认 7200=2h]
 # 前置：build-post / build-pre 两个构建目录已就绪（见 CMakeLists.txt 头注释）
 # 产物：docs/tmp/linux-build/smoke-results.txt（追加式）
@@ -37,4 +37,19 @@ echo "-- A1 RSS 对照（${DUR}s 素材，Maximum resident set size）"
 /usr/bin/time -v "$PRE"  --denoise-wav "$WORK/long.wav" "$WORK/out-pre.wav"  2>&1 | grep -E "Maximum resident|Elapsed" | sed 's/^/  修复前: /'
 /usr/bin/time -v "$POST" --denoise-wav "$WORK/long.wav" "$WORK/out-post.wav" 2>&1 | grep -E "Maximum resident|Elapsed" | sed 's/^/  修复后: /'
 if cmp -s "$WORK/out-pre.wav" "$WORK/out-post.wav"; then echo "  输出逐字节一致: PASS"; else echo "  输出逐字节一致: FAIL"; fi
+
+# ---- 带真实模型的三动词（round-3 起；模型缺省即跳过，见 README 两源）----
+AI_MODEL="$WORK/models/gtcrn_simple.onnx"
+SEP_MODEL="$WORK/models/UVR-MDX-NET-Voc_FT.onnx"
+if [ -f "$AI_MODEL" ] && [ -f "$SEP_MODEL" ]; then
+    echo "-- 带模型动词（RSS/耗时经 /usr/bin/time -v）"
+    /usr/bin/time -v "$POST" --ai-denoise       "$WORK/small.wav" "$WORK/out-ai.wav"   "$AI_MODEL" 2>&1 | grep -E "^(OK|FAIL)|Maximum resident|Elapsed" | sed 's/^/  ai:       /'
+    /usr/bin/time -v "$POST" --sep-vocals       "$WORK/small.wav" "$WORK/out-voc.wav" "$SEP_MODEL" 2>&1 | grep -E "^(OK|FAIL)|Maximum resident|Elapsed" | sed 's/^/  sep-voc:   /'
+    /usr/bin/time -v "$POST" --sep-instrumental "$WORK/small.wav" "$WORK/out-inst.wav" "$SEP_MODEL" 2>&1 | grep -E "^(OK|FAIL)|Maximum resident|Elapsed" | sed 's/^/  sep-inst:  /'
+    for f in "$WORK"/out-ai.wav "$WORK"/out-voc.wav "$WORK"/out-inst.wav; do
+        ffprobe -v error -show_entries stream=codec_name,sample_rate,channels -show_entries format=duration -of default=nw=1 "$f" | tr '\n' ' '; echo "<- $f"
+    done
+else
+    echo "-- 带模型动词：SKIP（$AI_MODEL / $SEP_MODEL 不存在，按 README 获取后重跑）"
+fi
 echo "==== smoke run end ===="

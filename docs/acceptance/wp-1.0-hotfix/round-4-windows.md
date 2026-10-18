@@ -1,7 +1,7 @@
-# round-3 — Windows 复验 runbook（WP-1.0 收官，关闭 R12/R13）
+# round-4 — Windows 复验 runbook（WP-1.0 收官，关闭 R12/R13）
 
 > 在产品目标机（MinGW 工具链 + third_party 四套就位）上执行；逐项把命令输出粘进本文件，并更新
-> `matrix.csv` 的 round-3 列。全绿后：REQUIREMENTS §8 R12/R13 标记关闭、CLAUDE.md P0 #8/#9 摘牌、
+> `matrix.csv` 的 round-4 列。全绿后：REQUIREMENTS §8 R12/R13 标记关闭、CLAUDE.md P0 #8/#9 摘牌、
 > v1-development-plan WP-1.0 标记完成。
 
 ## 1. 编译（compile-mingw）
@@ -34,7 +34,7 @@ video_handler --sep-instrumental small.wav out6.wav <UVR模型.onnx>
 video_handler --extract-audio tiny.mp4
 ```
 
-预期：全部 `OK:`；`ffprobe` 体检 out1–out6 为 `pcm_f32le / 44100 / 2ch / 30s`。AI/分离两动词是本轮新增覆盖（Linux 无模型权重，round-1/2 未跑）。
+预期：全部 `OK:`；`ffprobe` 体检 out1–out6 为 `pcm_f32le / 44100 / 2ch / 30s`。AI/分离两动词 Linux round-3 已带真实模型跑通（含 avail 截断除法崩溃修复，`round-3.md`），本轮补 Windows 侧；⚠ Windows MinGW 无 `_GLIBCXX_ASSERTIONS`，越界类 bug 在该侧是静默内存破坏——本轮即是对修复的正确性复验。
 
 ## 3. 错误注入回归（a2-inject-run-post / a2-inject-setup / sep-error-channel，可选）
 
@@ -71,7 +71,7 @@ while (-not $proc.HasExited) { $peak = [Math]::Max($peak, $proc.PeakWorkingSet64
 
 ## 6. 收尾清单（全绿后）
 
-1. `matrix.csv` round-3 列全 PASS；本文件粘贴各项输出。
+1. `matrix.csv` round-4 列全 PASS；本文件粘贴各项输出。
 2. REQUIREMENTS §8：R12 「Windows 同款复验后关闭」→ 已关闭；R13 → 已关闭。
 3. CLAUDE.md P0 债 #8/#9 摘牌（改写为已修历史或删除）。
 4. v1-development-plan WP-1.0 行标记完成。
