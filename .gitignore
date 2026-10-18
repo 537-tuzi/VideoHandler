@@ -1,6 +1,7 @@
 # 构建产物
 /build/
 /build-dbg/
+/build-linux/
 /src/bin/
 /src/bin-dbg/
 

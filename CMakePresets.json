@@ -11,7 +11,9 @@
                 "CMAKE_PREFIX_PATH": "D:/qt6/6.11.1/mingw_64",
                 "CMAKE_CXX_COMPILER": "D:/qt6/Tools/mingw1310_64/bin/g++.exe",
                 "CMAKE_MAKE_PROGRAM": "D:/qt6/Tools/Ninja/ninja.exe",
-                "CMAKE_CXX_FLAGS_RELEASE": "-O2 -DNDEBUG"
+                "CMAKE_CXX_FLAGS_RELEASE": "-O2 -DNDEBUG",
+                "QT_BIN": "D:/qt6/6.11.1/mingw_64",
+                "MINGW_BIN": "D:/qt6/Tools/mingw1310_64/bin"
             }
         },
         {
@@ -23,7 +25,20 @@
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_PREFIX_PATH": "D:/qt6/6.11.1/mingw_64",
                 "CMAKE_CXX_COMPILER": "D:/qt6/Tools/mingw1310_64/bin/g++.exe",
-                "CMAKE_MAKE_PROGRAM": "D:/qt6/Tools/Ninja/ninja.exe"
+                "CMAKE_MAKE_PROGRAM": "D:/qt6/Tools/Ninja/ninja.exe",
+                "QT_BIN": "D:/qt6/6.11.1/mingw_64",
+                "MINGW_BIN": "D:/qt6/Tools/mingw1310_64/bin"
+            }
+        },
+        {
+            "name": "linux-test",
+            "displayName": "Linux 引擎测试构建（gcc + Ninja，WP-1.2a）",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build-linux",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_CXX_COMPILER": "g++",
+                "CMAKE_CXX_FLAGS_RELEASE": "-O2 -DNDEBUG"
             }
         }
     ],
@@ -35,6 +50,10 @@
         {
             "name": "mingw-debug",
             "configurePreset": "mingw-debug"
+        },
+        {
+            "name": "linux-test",
+            "configurePreset": "linux-test"
         }
     ]
 }

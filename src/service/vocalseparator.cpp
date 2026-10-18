@@ -258,7 +258,6 @@ std::vector<float> VocalSeparator::process(const float* in, int64_t frames) {
         const int64_t pEnd = impl_->pBase + static_cast<int64_t>(impl_->inQ.size()) / 2;
         const int64_t reach = pEnd - impl_->win() - impl_->nextFrame * kHop;// 负数时截断除法会算出假可用帧，须先挡
         if (reach < 0) break;
-        const int64_t avail = reach / kHop + 1;
         impl_->analyzeFrame(impl_->nextFrame, impl_->specCount);
         impl_->nextFrame++;
         impl_->specCount++;
