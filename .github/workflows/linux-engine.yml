@@ -1,0 +1,32 @@
+# linux-engine — Linux 引擎测试构建 + 回归（WP-1.2b；spec：docs/spec/ci-build-strategy.md §3）
+# 本地对应验证：docs/acceptance/wp-1.2-linux-build/scripts/ci-smoke.sh（同一脚本）
+name: linux-engine
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  linux-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: apt 依赖（Qt/FFmpeg/SoundTouch/Ninja/ffmpeg 工具）
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev ninja-build pkg-config g++ \
+            libavformat-dev libavcodec-dev libavutil-dev libswresample-dev \
+            libsoundtouch-dev ffmpeg
+      - name: third_party 缓存（fetch-deps 哈希矩阵键控）
+        uses: actions/cache@v4
+        with:
+          path: third_party
+          key: third-party-${{ hashFiles('scripts/fetch-deps.sh') }}
+      - name: 依赖获取（ORT 1.30.0 + 两模型）
+        run: ./scripts/fetch-deps.sh
+      - name: 配置 + 构建（linux-test）
+        run: |
+          cmake --preset linux-test
+          cmake --build --preset linux-test
+      - name: 引擎回归（分块不变性 + CLI 冒烟 + ffprobe）
+        run: bash docs/acceptance/wp-1.2-linux-build/scripts/ci-smoke.sh

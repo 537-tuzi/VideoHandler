@@ -15,3 +15,6 @@ edge-sep-short,分离短输入（0.1s）干净 FAIL exit=1,PASS
 edge-ai-garbage,垃圾模型干净 FAIL exit=1 无半成品残留,PASS
 ort130-sep-rss,分离路径 RSS 在 ORT 1.30.0 下仍 ~2.6GB（WP-1.4 发现复证，非 1.23 特有）,FAIL(归 WP-1.4)
 compile-mingw,分层后 Windows MinGW 构建（WIN32 分支本机不可验，runbook 复验）,PENDING(round-4)
+ci-smoke-local,ci-smoke.sh 本地全量跑通（5s 素材五引擎不变性+7 动词+体检，即 CI 步骤本体）,PASS
+ci-workflow-yaml,.github/workflows/linux-engine.yml 语法校验 + 引用路径自洽,PASS
+ci-workflow-run,Actions 真机执行（push 后回填）,PENDING
