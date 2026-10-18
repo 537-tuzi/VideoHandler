@@ -61,7 +61,7 @@ Linux 侧只需 `./scripts/fetch-deps.sh`（ORT linux 包 + 两模型，含 SHA2
 | ONNX Runtime | 1.30.0 CPU 版（`libonnxruntime.a` + `onnxruntime.dll` + `onnxruntime_providers_shared.dll`） |
 | SoundTouch | https://www.surina.net/soundtouch/soundtouch-2.3.3.tar.gz ，MinGW 编译：`g++ -O2 -DSOUNDTOUCH_FLOAT_SAMPLES=1 -c source/SoundTouch/*.cpp` → `libSoundTouch.a` |
 | GTCRN 降噪模型 | https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/gtcrn_simple.onnx |
-| MDX-Net 人声分离模型 | https://hf-mirror.com/Politrees/UVR_resources/resolve/main/models/MDXNet/UVR-MDX-NET-Voc_FT.onnx |
+| MDX-Net 人声分离模型 | https://hf-mirror.com/Politrees/UVR_resources/resolve/main/models/MDXNet/UVR-MDX-NET-Voc_FT.onnx （仅支持内置 UVR 官方参数表收录的 MDX-Net 模型，按文件末 10000KiB MD5 识别，其他模型会被拒绝并提示） |
 
 ## 构建
 

@@ -13,6 +13,8 @@ struct AiDenoiser::Impl {
     std::unique_ptr<Ort::Session> sess;
     std::vector<std::string> inNameStore, outNameStore;// 保活名字符串
     std::vector<const char*> inNames, outNames;
+    int mixInIdx = 0, enhOutIdx = 0;// 谱输入/增强输出槽位（按名字映射，防导出顺序变化）
+    std::vector<int> cacheInIdx, cacheOutIdx;// 三个状态张量对应的输入/输出槽位
     std::vector<int64_t> convShape, traShape, interShape;// GRU/卷积状态形状
     int sampleRate = 0, nFft = 0, hop = 0, winLen = 0;
     QString windowType;
@@ -75,16 +77,18 @@ struct AiDenoiser::Impl {
         return states;
     }
 
-    // 单帧推理：频谱进 → 增强谱出，状态自更新
+    // 单帧推理：频谱进 → 增强谱出，状态自更新（输入/输出均按 setup 查好的名字槽位就位）
     Ort::Value runFrame(Ort::Value x) {
-        std::vector<Ort::Value> inputs;
-        inputs.push_back(std::move(x));
-        for (auto& s : states) inputs.push_back(std::move(s));
+        std::vector<Ort::Value> inputs(inNames.size());
+        inputs[static_cast<size_t>(mixInIdx)] = std::move(x);
+        for (size_t k = 0; k < 3; ++k)
+            inputs[static_cast<size_t>(cacheInIdx[k])] = std::move(states[k]);
         auto out = sess->Run(Ort::RunOptions{nullptr}, inNames.data(), inputs.data(),
                              inputs.size(), outNames.data(), outNames.size());
         states.clear();
-        for (size_t k = 1; k < out.size(); ++k) states.push_back(std::move(out[k]));
-        return std::move(out[0]);
+        for (size_t k = 0; k < 3; ++k)
+            states.push_back(std::move(out[static_cast<size_t>(cacheOutIdx[k])]));
+        return std::move(out[static_cast<size_t>(enhOutIdx)]);
     }
 
     // 滑一个 hop：分析加窗 → STFT → 模型 → iSTFT → 重叠相加
@@ -165,6 +169,39 @@ bool AiDenoiser::setup(const QString& modelPath, QString* err) {
         if (!ok || impl_->windowType.isEmpty() || impl_->inNames.size() != 4 || impl_->outNames.size() != 4) {
             if (err) *err = QStringLiteral("模型元数据不完整，确认是 gtcrn_simple.onnx");
             return false;
+        }
+        if (impl_->nFft != impl_->winLen) {// fft_forward 按 winLen 缓冲跑 nFft 点，隐含假设二者相等
+            if (err) *err = QStringLiteral("模型规格不支持：n_fft=%1 与 window_length=%2 不等")
+                             .arg(impl_->nFft).arg(impl_->winLen);
+            return false;
+        }
+        {// 按名字映射槽位：缓存输入 ↔ <名>_out 输出；谱输入/增强输出为各自剩余者
+            auto findIdx = [](const std::vector<std::string>& v, const std::string& n) {
+                for (size_t i = 0; i < v.size(); ++i)
+                    if (v[i] == n) return static_cast<int>(i);
+                return -1;
+            };
+            const char* caches[3] = {"conv_cache", "tra_cache", "inter_cache"};
+            impl_->cacheInIdx.assign(3, -1);
+            impl_->cacheOutIdx.assign(3, -1);
+            int inUsed = 0, outUsed = 0;
+            for (int k = 0; k < 3; ++k) {
+                impl_->cacheInIdx[static_cast<size_t>(k)] = findIdx(impl_->inNameStore, caches[k]);
+                impl_->cacheOutIdx[static_cast<size_t>(k)] =
+                    findIdx(impl_->outNameStore, std::string(caches[k]) + "_out");
+                if (impl_->cacheInIdx[static_cast<size_t>(k)] < 0
+                    || impl_->cacheOutIdx[static_cast<size_t>(k)] < 0) {
+                    if (err) *err = QStringLiteral("模型输入/输出名与 GTCRN 约定不符（缓存张量应名 %1/_out）")
+                                     .arg(QLatin1String(caches[k]));
+                    return false;
+                }
+                inUsed |= 1 << impl_->cacheInIdx[static_cast<size_t>(k)];
+                outUsed |= 1 << impl_->cacheOutIdx[static_cast<size_t>(k)];
+            }
+            impl_->mixInIdx = 0;
+            while (inUsed & (1 << impl_->mixInIdx)) impl_->mixInIdx++;
+            impl_->enhOutIdx = 0;
+            while (outUsed & (1 << impl_->enhOutIdx)) impl_->enhOutIdx++;
         }
         impl_->window = impl_->makeWindow();
         impl_->analysis.assign(static_cast<size_t>(impl_->winLen), 0.f);

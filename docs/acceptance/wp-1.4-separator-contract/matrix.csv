@@ -1,0 +1,16 @@
+case,round-1,说明
+PAR-MD-001,PASS,真模型查表命中：Voc_FT 末10000KiB MD5=77d07b…→n_fft7680/dimF3072/dimT256/compensate1.021/primaryVocals
+PAR-MD-002,PASS,plane-major 读法+输出契约校验正路（sep-voc/sep-inst 产出非废音、RMS 量级正确）
+PAR-MD-003,PASS,compensate 实测：sep-inst 输出满足 (mix−inst)/voc=1.02100（std 1.05e-06）
+PAR-MD-004,PASS,wantSub 语义修复：voc=主 stem 直出、inst=mix−c×主 stem（修复前公式取反、两 stem 角色对调）
+PAR-MD-005,PASS,前 3 频点置零代码落地（数值 parity 对照随 WP-1.1）
+PAR-MD-006,PASS,分块不变性：两动词 × 整块/4096/977 输出逐样本零差
+PAR-MD-007,PASS,AiDenoiser 槽位按名映射+n_fft==winLen 断言（GTCRN 正路回归绿）
+PAR-MD-008,PASS,RSS 120s：sep-voc 1.48GB / sep-inst 1.48GB（≤2GB；DisableCpuMemArena 前 2.58GB）
+PAR-MD-009,PASS,负例·不认识的模型：手术模型哈希 miss→中文报错+exit1+无残留
+PAR-MD-010,PASS,负例·输出布局不符：Transpose 模型→「实际 [1,4,256,3072]」+无残留
+PAR-MD-011,PASS,负例·输出 dtype 非 float32：Cast double 模型→「type=11」+无残留
+PAR-MD-012,PASS,负例·GTCRN 缓存名不符：conv_cache_out 改名→「与 GTCRN 约定不符」+无残留
+PAR-MD-013,PASS,负例·GTCRN n_fft≠winLen：metadata 篡改→「n_fft=999 与 window_length=512 不等」+无残留
+PAR-MD-014,PASS,注入/还原构建等价：两构建 sep-voc 输出逐字节一致
+REG-001,PASS,ci-smoke 全绿：FFT-PR 全部+五引擎分块不变性+CLI 7 动词+ffprobe 体检
