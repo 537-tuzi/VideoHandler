@@ -256,8 +256,9 @@ std::vector<float> VocalSeparator::process(const float* in, int64_t frames) {
     if (!impl_->headDone) return out;
     while (true) {
         const int64_t pEnd = impl_->pBase + static_cast<int64_t>(impl_->inQ.size()) / 2;
-        const int64_t avail = (pEnd - impl_->win() - impl_->nextFrame * kHop) / kHop + 1;
-        if (avail < 1) break;
+        const int64_t reach = pEnd - impl_->win() - impl_->nextFrame * kHop;// 负数时截断除法会算出假可用帧，须先挡
+        if (reach < 0) break;
+        const int64_t avail = reach / kHop + 1;
         impl_->analyzeFrame(impl_->nextFrame, impl_->specCount);
         impl_->nextFrame++;
         impl_->specCount++;
@@ -288,7 +289,8 @@ std::vector<float> VocalSeparator::flush() {
     const int64_t pCover = impl_->win() + len;// x 全部 final 所需的帧覆盖线
     while (impl_->nextFrame * kHop < pCover) {
         const int64_t pEnd = impl_->pBase + static_cast<int64_t>(impl_->inQ.size()) / 2;
-        const int64_t avail = (pEnd - impl_->win() - impl_->nextFrame * kHop) / kHop + 1;
+        const int64_t reach = pEnd - impl_->win() - impl_->nextFrame * kHop;// 同 process：负数先挡，防截断除法假帧
+        const int64_t avail = reach < 0 ? 0 : reach / kHop + 1;
         if (avail >= 1) {
             impl_->analyzeFrame(impl_->nextFrame, impl_->specCount);
             impl_->nextFrame++;
