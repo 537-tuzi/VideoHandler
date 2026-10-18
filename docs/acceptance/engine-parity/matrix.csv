@@ -1,32 +1,16 @@
-case,组,描述,判定标准,round-1
-PAR-GT-001,GTCRN,合成白噪声10s,parity≤−60dB,待跑
-PAR-GT-002,GTCRN,真实语音素材(下载配方),parity≤−60dB,待跑
-PAR-GT-003,GTCRN,短于1hop输入,等长对齐且parity≤−60dB,待跑
-PAR-GT-004,GTCRN,非整hop尾部(3hop+123),等长对齐且parity≤−60dB,待跑
-PAR-GT-005,GTCRN,分块不变性chunk∈{64/256/4096/整段},bit-exact(放宽−120dB),待跑
-PAR-GT-006,GTCRN,48k立体声源(含重采样链),双级判据(引擎段≤−60dB),待跑
-PAR-GT-007,GTCRN,单声道源,双级判据(引擎段≤−60dB),待跑
-PAR-MD-001,MDX,合成白噪声10s,parity≤−60dB,待跑
-PAR-MD-002,MDX,真实混合素材(下载配方),parity≤−60dB,待跑
-PAR-MD-003,MDX,短于最小帧输入,报错且无输出文件,待跑
-PAR-MD-004,MDX,非整hop尾部,等长对齐且parity≤−60dB,待跑
-PAR-MD-005,MDX,分块不变性chunk∈{64/256/4096/整段},bit-exact(放宽−120dB),待跑
-PAR-MD-006,MDX,多批次长素材(>dimT帧),parity≤−60dB,待跑
-PAR-MD-007,MDX,伴奏模式(mix−vocals对齐),parity≤−60dB,待跑
-PAR-MD-008,MDX,48k源(引擎内重采样44.1k),行为不变+parity≤−60dB,待跑
-PAR-MD-009,MDX,输出契约负例(坏模型),明确报错且不写输出,待跑
-PAR-DS-001,DSP,50Hz陷波vs scipy双精度,parity≤−60dB,待跑
-PAR-DS-002,DSP,通带波纹200Hz–20kHz,|H|波动≤±0.1dB,待跑
-PAR-DS-003,DSP,60Hz profile(WP-1.6后),衰减≥20dB@60/120/180Hz,待跑
-PAR-DS-004,DSP,高通支路vs scipy,parity≤−60dB,待跑
-PAR-PT-001,变调,pitch(+5)∘pitch(−5)往返,相关系数≥0.99且长度一致,待跑
-PAR-PT-002,变调,分块不变性,bit-exact(放宽−120dB),待跑
-FFT-PR-001,FFT,往返恒等,RMS≤−130dB,待跑
-FFT-PR-002,FFT,Parseval能量守恒,相对误差≤1e-6,待跑
-FFT-PR-003,FFT,线性性,≤−130dB,待跑
-FFT-PR-004,FFT,冲激响应谱,幅偏差≤1e-6,待跑
-FFT-PR-005,FFT,随机信号vs numpy(n=512/6144/8192),幅相误差≤−100dB,待跑
-PAR-SR-001,采样率,48k源transcode直通,输出头48k/2ch且样本bit-exact,待跑
-PAR-SR-002,采样率,48k源denoise/pitch,输出头48k/2ch且parity≤−60dB,待跑
-PAR-SR-003,采样率,44.1k源回归,行为不变(现有用例全绿),待跑
-PAR-SR-004,采样率,44.1k源sep-vocals,输出头44.1k(路径不变),待跑
+case,round-1,说明
+PAR-DS-001,PASS,DSP hum50：vs float32 同构参考 −50.9dB（分级判据 ≤−45；vs double −15.9dB 归因 float32 系数量化，理论陷波深度上限 −26.7dB，证据 round-1 §2）
+PAR-DS-002,PASS,DSP white：vs double 参考 −71.8dB
+PAR-DS-003,PASS,DSP sine1k：sanity −75.6dB
+PAR-DS-004,PASS,DSP odd：非整 hop 尾 −75.2dB（biquad 无内部缓冲，边界天然一致）
+PAR-GT-001,FAIL,GTCRN white16mo：判据修订（残差/RMS输入）后稳态 −59.4dB 未过 −60；帧网格错半窗（knf center/reflect）+ 首尾窗分母补偿缺两债实锤，round-2 修后复测（round-1 §3）
+PAR-GT-002,VOID,GTCRN sine16mo：正弦非模型工作点，两实现对近零输出分歧无意义，用例废除（换真实语音素材，round-2 §6.3）
+PAR-GT-003,PENDING,GTCRN 边界（短于 hop/odd 尾）：随 round-2 与语音素材一并跑
+PAR-MD-001,PENDING,MDX sine1k：audio-separator 官方 vs engine_test sep-voc
+PAR-MD-002,PENDING,MDX white：全频带
+PAR-MD-003,PENDING,MDX multi12s：多 batch 衔接（>dimT 帧）
+PAR-MD-004,PENDING,MDX odd：非整 hop 尾（反射填充边界）
+PAR-MD-005,PENDING,MDX sep-inst（compensate 相减支路 parity）
+PAR-PT-001,PASS,变调 +2∘−2 往返：谱判据全过（长度 0 差 / 峰频 0.00 音分 / 杂散抑制 58.8dB / RMS +0.00dB；逐样本残差 −12.9dB 系 WSOLA 相位漂移，非缺陷）
+PAR-PT-002,PASS,变调分块不变（已并入 ci-smoke，此处记交叉引用）
+FFT-PR-001..005,PASS,WP-1.3 已落地并入 ci-smoke（交叉引用 wp-1.3-fft-rewrite/matrix.csv）

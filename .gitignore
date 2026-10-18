@@ -11,6 +11,9 @@
 # 测试素材与生成产物
 /test/
 
+# Python 运行产物
+__pycache__/
+
 # 本地 AI 工作记忆（不随项目分发）
 /.workbuddy/
 

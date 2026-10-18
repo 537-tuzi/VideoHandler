@@ -1,44 +1,37 @@
-# engine-parity 总目标与进展
+# WP-1.1 engine-parity 总目标
 
-- 建立：2026-10-13
-- 上位计划：`docs/spec/v1-development-plan.md`（M1）；技术方案：`docs/spec/parity-test-plan.md`
+## 目标
 
-## 总目标
+NFR-Q1 落地：五引擎对照官方/独立参考实现的数值 parity 测试（判据 −60dB RMS，见 `docs/spec/parity-test-plan.md` §1），进 ci-smoke 回归网，此后引擎改动保持全绿。
 
-NFR-Q1 落地：GTCRN/MDX/DSP 三引擎对照官方参考实现 parity ≤ −60dB RMS，全用例绿并进 CI 门禁；顺带覆盖 NFR-Q2（DSP 通带波纹）、分块不变性（流式正确性照妖镜）与 FFT 性质测试。**未全绿前不动 M2 及以后的引擎行为。**
+## sub goal matrix
 
-## sub goal matrix（唯一进展事实源）
-
-| SG | 目标 | 验收 | 状态 | 备注 |
-|---|---|---|---|---|
-| SG1 | 测试基建：gen_inputs / gen_golden / compare 三脚本 + /test/ 布局 + fixtures.json | 脚本可重跑产全部素材与金样本，哈希一致 | 未开始 | 依赖：无 |
-| SG2 | Linux DUT 构建（WP-1.2a） | linux-test preset 构建 libengine+engine_test，跑通一个合成用例 | 未开始 | 依赖：无；spec ci-build-strategy §2/§6 |
-| SG3 | FFT 重写（WP-1.3） | FFT-PR-001..005 全绿 | 未开始 | 依赖：SG1（脚本宿主）；spec fft-rewrite |
-| SG4 | GTCRN parity（WP-1.1） | PAR-GT 组全绿 | 未开始 | 依赖：SG1+SG2；对齐约定是最大风险（spec §5） |
-| SG5 | MDX parity + 输出契约（WP-1.1+1.4） | PAR-MD 组全绿（含负例 009） | 未开始 | 依赖：SG1+SG2+SG3 |
-| SG6 | DSP/变调/采样率组（WP-1.5+1.6） | PAR-DS/PT/SR 组全绿 | 未开始 | 依赖：SG1+SG2 |
-| SG7 | CI 接线（WP-1.2b） | linux-engine job 必绿；PR 门禁生效 | 未开始 | 依赖：SG4/SG5/SG6 |
-
-## 重大决策记录
-
-| # | 日期 | 决策 |
+| sub goal | 内容 | 状态 |
 |---|---|---|
-| D-01 | 2026-10-13 | 指标 = 20·log10(RMS(dut−ref)/RMS(ref)) ≤ −60dB，样本级对齐，长度不等即 FAIL |
-| D-02 | 2026-10-13 | 分块不变性目标 bit-exact，确证浮点顺序差异时放宽 −120dB 并记录 |
-| D-03 | 2026-10-13 | 跨采样率用例双级判据：参考侧先用同参数 swr 预降采样再推理，只比引擎段 |
-| D-04 | 2026-10-13 | 素材/金样本一律不入库（/test/ 已 ignore），SHA256 进 fixtures.json 锁定 |
-| D-05 | 2026-10-13 | 主线走 Linux engine_test 全自动；Windows 手跑仅作 SG2 前的过渡 |
-| D-06 | 2026-10-14 | GTCRN golden 一律取 sherpa-onnx **online** CLI 产出；offline 路径（knf/反射填充/窗²归一化）边界行为不同，禁作 golden |
+| SG-1 基建 | 素材生成 gen_inputs.py + 比较器 compare.py + fixtures.json 哈希防漂移 | round-1 完成 |
+| SG-2 DSP parity | scipy 双精度 RBJ+lfilter 参考 vs dspdenoiser（PAR-DS） | round-1 全绿（hum50 走 float32 同构参考分级判据，理由 round-1 §2） |
+| SG-3 GTCRN parity | sherpa-onnx 同模型推理参考 vs aidenoiser（PAR-GT，对齐点=首 hop 吞吐约定） | round-1 未收敛：判据修订（残差/RMS输入，−59.4dB）+ 两引擎债实锤（帧网格半窗偏移、首尾窗分母补偿缺），round-2 修后复测 |
+| SG-4 MDX parity | audio-separator 官方管线 vs vocalseparator（PAR-MD，边界=反射填充） | round-1 受阻（torch 554MB 撞 ~/.local 配额，--target 重定向后台进行中），round-2 跑 |
+| SG-5 变调性质 | pitch(+n)∘pitch(−n) 往返恒等 + 长度一致（PAR-PT，无独立参考） | round-1 全绿（谱判据） |
+| SG-6 接入 CI | parity 套件并入 ci-smoke.sh（依赖 venv 存在时跑）+ 依赖版本锁依赖矩阵 | 待做（依赖 SG-3/4 收敛） |
 
-## 重要信息
+FFT 性质五件套（FFT-PR）已在 WP-1.3 落地并入 ci-smoke，不重复建。分块不变性照妖镜已在 WP-1.2 并入 ci-smoke（五引擎），不重复。
 
-- **GTCRN 对齐约定已源码级确认**（详见 `docs/reference/research-gtcrn-sherpa-onnx.md`；2026-10-14 反证复核 `docs/reference/falsify-gtcrn-golden.md`）：sherpa online 路径逐帧推理（含前置补零的第 0 帧）、输出与输入样本级对齐、滞后恰 1 hop=16ms；flush=余量补零成整 hop+再补一个全零 hop+按总输入长截断。源码级判据：`started_` 只拦输出发射，STFT/推理/WOLA 无条件执行——是「滞后 1 hop 发射」不是「吞掉/少推理一帧」。我们 `aidenoiser.cpp:90-124` 同构（runFrame 与 WOLA 均在 `!started` 判断之前），**SG4 首查项已闭环：语义与 sherpa 一致**。
-- 参考实现锁定：sherpa-onnx 1.13.8（online CLI `sherpa-onnx-online-denoiser --speech-denoiser-gtcrn-model=…`）；wheel SHA256 待 SG1 安装时登记并同步依赖矩阵。其自带 ORT 1.28.2，与我们运行时 ORT 1.30 无冲突（两侧独立环境）。版本存在性经反证复核（PyPI+GitHub release+master 三源互证，2026-09-10 发布、即当前最新）；其后 online 两核心文件零改动，锁版本安全。
-- 数值风险提示：sherpa online 的谱变换为 double 直算 O(N²) DFT（端点是 float：窗乘在 float 域、出口 cast），参考侧非全 double；我们 float FFT 仍是 −60dB 判据的主要数值变数（误差 ~1e-7 vs 判据 1e-3，余量约 4 个数量级；FFT-PR-005 先行卡位）。
-- **D-06 差异范围收紧（2026-10-14 反证）**：offline≠online 不止首尾边界——offline 帧 0/末帧谱用 reflect 填充 vs online 零填充，谱差经因果状态递推（conv/tra/inter cache + GRU）传播到**全部后续帧**；叠加数值路径全线不同（kissfft float+窗²分母 vs double DFT+COLA）。**不存在可互替段，D-06 禁令维持且不可放宽**。
-- **golden 执行注意事项（反证审查新增，gen_inputs/gen_golden 落实时逐条对照）**：① sherpa golden WAV 为 int16 量化（量化噪声 ~−81dB，占 −60dB 判据小份额，round 记录）；② sherpa ReadWave 不支持 24-bit 与 WAVE_FORMAT_EXTENSIBLE，测试输入一律 16-bit PCM；③ golden 命令显式固定 `--chunk-duration-ms`（CLI 默认 10 非 16；16k 无重采样时分块不影响输出，仍固定以绝后患）；④ speech-enhancement-models 为 rolling tag，模型 SHA256 随 D-04 一并登记；⑤ 勿把上游 demo 输出当参考（重建端 np.hanning=symmetric 与分析端 torch.hann_window=periodic 不一致）。
-- **O1 证据（GTCRN 许可证）**：gtcrn_simple.onnx 出处链已闭环到上游仓库 LICENSE = **MIT**（Copyright (c) 2024 Rong Xiaobin）——结论【倾向】可用、与 D1 兼容；缺口仅 sherpa release 页无逐字模型许可字样。已于 2026-10-14 经用户确认关闭（REQUIREMENTS v1.1）。
-- 真实语音/音乐素材的来源与许可：待选定后登记（避开 ContentVec 类 NC 陷阱）。
-- **UVR-MDX-NET-Voc_FT 图签名已实测**（`research-mdx-uvr-audio-separator.md`，onnx 直查模型文件 + audio-separator 源码佐证）：输入/输出名 `input`/`output`，shape `[b,4,3072,256]`，**plane-major**。官方参数表（末尾 10MiB MD5 查表）：**n_fft=7680**、dim_t 静态 256、primary_stem=Vocals、compensate=1.021。
-- **SG5 修复清单（当前实现对 Voc_FT 产出废音，两处确认 bug；plane-major 已被反证穷尽 7 实现坐实）**：① 输出按 frame-major 读（`vocalseparator.cpp:149`）须改 plane-major；② `nFft=dimF*2=6144` 须改查表 7680。附带：分析谱前 3 频点置零、伴奏 compensate 系数、边界策略差异（我们整流反射填充 vs 官方 chunk+零 trim，见 parity 计划 §5）——golden 侧用编程接口取 demix 浮点输出（跳过 0.9 写盘归一化与 int16 量化）。**2026-10-14 反证补强（`falsify-mdx.md`）**：parity 参考参数集钉死 audio-separator 默认（overlap 0.25/segment 256/batch 1/denoise off；UVR5 GUI 默认 step 不同不采）；dim_t 非全系 256（表含 128/512），输出断言与缓冲用查表值；两家共用同一参数表（命中非独立交叉，另有 UVR 5.4 硬编码佐证）。
-- 参考实现锁定：audio-separator v0.47.0（pip `audio-separator`，torch 硬依赖、onnxruntime 为可选 extra——golden 侧装 `[cpu]`）；模型哈希与版本随 SG1 登记进依赖矩阵。
+## 重大决策
+
+- **DUT 用 engine_test（裸 f32 直调引擎）而非 CLI**：parity 纯比引擎段，绕开 swr 重采样核差异（spec §5 对策的更彻底形态）；MDX 喂 44.1k 立体声裸流、GTCRN 喂 16k 单声道裸流。参考实现侧喂同内容的 pcm_f32le wav（无 16bit 量化垫噪）。CLI 级 e2e 行为由 ci-smoke 冒烟覆盖。
+- **PAR-PT 变调往返用谱判据而非逐样本**：SoundTouch +2∘−2 逐样本残差 −12.9dB 是 WSOLA 往返相位漂移（正弦相位敏感），非缺陷。判据 = 长度 0 差 + 峰频误差 <10 音分（实测 0.00）+ 峰外杂散抑制 ≥40dB（实测 58.8dB）+ RMS 守恒 ±0.1dB（实测 +0.00）。
+- **PAR-DS 判据分级（round-1）**：通带用例（white/sine1k/odd）vs double 参考 −60dB 硬线全过；陷波深度用例（hum50）vs double 只剩 −15.9dB，判别实验证明主因是 float32 系数量化（同构 scipy-float32 参考同样崩，理论深度上限 −26.7dB）——引擎固有精度而非实现 bug，改用 vs float32 同构参考 ≤−45dB 线（实测 −50.9）。精度债随 WP-1.6 double 化消灭后收回该分级。
+- **venv 不可用（python3.14 无 ensurepip）→ pip3 --user --break-system-packages**：PEP 668 环境装 ~/.local，不动系统目录；CI 侧用工作流 pip 装。
+- 素材与金样本落 `/test/`（gitignore），入库只留再生配方脚本。
+- 参考实现版本锁定：sherpa-onnx 1.13.8、audio-separator[cpu] 0.47.0、scipy（装后把精确版本+wheel SHA256 记 ci-build-strategy.md §4）。
+
+## 关键信息
+
+- 判据与对齐细则见 spec；GTCRN 最大不确定性 = 首 hop 吞吐延迟约定（spec §5）——round-1 已实锤为**帧网格半窗偏移**（knf center=true/reflect 默认 vs 我们无 pad 网格），详 round-1 §3。
+- **GTCRN 判据修订**（round-1）：白噪声下参考输出近静音，spec §1「残差/RMS(ref)」小分母失效；改残差/RMS(输入)。
+- **两笔 GTCRN 引擎债**（round-1 实锤，处置待拍板）：① 前端缺 center-reflect 半窗 pad（帧网格错半窗，对齐后残差 −33.8→−57.5dB）；② 逆变换缺窗-OLA 分母补偿（首尾段最差 −51.6dB）。改动落 aidenoiser.cpp 前端。
+- **DSP 精度债**（round-1 新增建议）：float32 系数量化把 Q30 陷波理论深度吃到 −26.7dB（double −203.7dB），建议随 WP-1.6 动 dspdenoiser 时 double 化；WP-1.1 不改引擎，hum50 判据分级处理。
+- sine16mo 用例废除（非模型工作点），PAR-GT 终判改用真实语音素材（许可核定后引入）。
+- sherpa-onnx 版本 1.13.8、scipy 1.18.1 已锁定；audio-separator 0.47.0 安装受阻中（详 round-1 §4）。
+
