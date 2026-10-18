@@ -11,12 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: apt 依赖（Qt/FFmpeg/SoundTouch/Ninja/ffmpeg 工具）
+      - name: apt 依赖（Qt/FFmpeg/SoundTouch/Ninja/ffmpeg/numpy 工具）
         run: |
           sudo apt-get update
           sudo apt-get install -y qt6-base-dev ninja-build pkg-config g++ \
             libavformat-dev libavcodec-dev libavutil-dev libswresample-dev \
-            libsoundtouch-dev ffmpeg
+            libsoundtouch-dev ffmpeg python3-numpy
       - name: third_party 缓存（fetch-deps 哈希矩阵键控）
         uses: actions/cache@v4
         with:
@@ -28,5 +28,5 @@ jobs:
         run: |
           cmake --preset linux-test
           cmake --build --preset linux-test
-      - name: 引擎回归（分块不变性 + CLI 冒烟 + ffprobe）
+      - name: 引擎回归（分块不变性 + FFT 属性 + CLI 冒烟 + ffprobe）
         run: bash docs/acceptance/wp-1.2-linux-build/scripts/ci-smoke.sh

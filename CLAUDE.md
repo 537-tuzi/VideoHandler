@@ -42,10 +42,11 @@ service/ 引擎        全部实现 IStreamEngine { inRate / inChannels / proces
   aidenoiser         GTCRN 流式（16k 单声道；STFT/WOLA 自实现；ORT 用 PIMPL 隔离）
   pitchshifter       SoundTouch 封装
   vocalseparator     UVR MDX-Net（44.1k 立体声；torch 反射填充 + WOLA + 窗²归一化）
-util/fft.h           自研 FFT（基-2 + Bluestein 任意长度）
+util/fft.h           自研 FFT（twiddle double 主表基-2 + Bluestein 任意长度；2 的幂直通）
 util/ffutil.h        FFmpeg 错误码/扩展名胶水
 model/data.h         全局常量（kCanonicalRate=44100、后缀、模型相对路径）
 test/engine_test     无头引擎 DUT（仅非 WIN32；裸 f32 直调引擎，分块不变性/parity 宿主）
+test/fft_test        FFT 性质 DUT（仅非 WIN32；FFT-PR 自检 + numpy 对照 dump）
 ```
 
 关键约定（新代码必须遵守）：
@@ -60,7 +61,7 @@ test/engine_test     无头引擎 DUT（仅非 WIN32；裸 f32 直调引擎，�
 ## 已知 P0 债（改引擎前先读；2026-10 代码审查结论）
 
 1. **无 parity 测试**：GTCRN/MDX 前端为手推实现，须对照 sherpa-onnx / audio-separator 建 golden 测试（NFR-Q1，最高优先）。
-2. `util/fft.h`：Bluestein 全 float 有精度风险；MDX 对 2 的幂帧也走 Bluestein（慢且亏精度，应直通基-2）；radix-2 无 twiddle 预计算表。
+2. `util/fft.h`：Bluestein 全 float 有精度风险；MDX 对 2 的幂帧也走 Bluestein（慢且亏精度，应直通基-2）；radix-2 无 twiddle 预计算表——**已修（2026-10-18，WP-1.3）**：twiddle double 主表 + 2 的幂直通 + Bluestein 加固（chirp 整数索引查表 / b 序列 init 期 double / 运行期 chirp double 直乘，频域卷积仍 float），FFT-PR 五项全绿（往返最差 −132dB vs −130 门槛、numpy 对照 −137dB 起），512/16k 直通提速 6.5–6.9×；`fft_test` DUT 入 ci-smoke；证据 `docs/acceptance/wp-1.3-fft-rewrite/`。Windows 编译随 round-4。
 3. `vocalseparator` 输出读法与参数双双有错（2026-10-14 调研实锤，`docs/reference/research-mdx-uvr-audio-separator.md`）：输出按 frame-major 读，实际是 plane-major `[b,4,dimF,dimT]`；`nFft=dimF*2` 推导错误，MDX 模型无 metadata、须按「末尾 10MiB MD5 查 UVR 官方参数表」取参（Voc_FT 实为 n_fft=7680、compensate=1.021）——现实现对 Voc_FT 产出废音。修复方案见 `docs/spec/separator-output-validation.md`。2026-10-17 真模型首跑另实锤 avail 截断除法假帧越界（`process`/`flush` 两处，已修，Linux gdb 复验；Windows MinGW 无 `_GLIBCXX_ASSERTIONS` 时同类越界为**静默内存破坏**），且分离路径稳态 RSS ~2.6GB 破 NFR-P4（非泄漏，ORT 稳态开销）——两项证据与候选实验见 `docs/acceptance/wp-1.0-hotfix/round-3.md`，均随 WP-1.4 一并处理。
 4. `kCanonicalRate=44100` 对视频源（48k）造成两次重采样；canonical 应改 48k 可配置（NFR-Q3）。
 5. `dspdenoiser` 50Hz 硬编码（60Hz 电网地区无效）。

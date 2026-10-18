@@ -139,9 +139,13 @@ if(WIN32)
     )
 endif()
 
-# ---- engine_test：无头引擎 DUT（parity/属性测试宿主），仅非 WIN32 ----
+# ---- engine_test / fft_test：无头 DUT（引擎分块不变性 + FFT 属性），仅非 WIN32 ----
 if(NOT WIN32)
     add_executable(engine_test src/test/engine_test.cpp)
     target_link_libraries(engine_test PRIVATE engine)
     target_compile_options(engine_test PRIVATE -Wall -Wextra)
+
+    add_executable(fft_test src/test/fft_test.cpp)
+    target_link_libraries(fft_test PRIVATE engine)
+    target_compile_options(fft_test PRIVATE -Wall -Wextra)
 endif()

@@ -1,0 +1,13 @@
+case,说明,round-1(Linux 2026-10-18)
+fft-pr-001,往返恒等 RMS ≤−130dB（512/6144/7680/8192/16384，直通+Bluestein 双路径）,PASS
+fft-pr-002,Parseval 能量守恒相对误差 ≤1e-6（同上五尺寸）,PASS
+fft-pr-003,线性 FFT(ax+by)=aFFT(x)+bFFT(y) 差 ≤−130dB（同上五尺寸）,PASS
+fft-pr-004,冲激 δ 输入谱全 1 偏差 ≤1e-6（同上五尺寸）,PASS
+fft-pr-005,随机复信号前向谱 vs numpy(double) ≤−100dB（512/6144/8192）,PASS
+perf-bench,重写前后同机每调用耗时对照（信息项非判据）,PASS(信息)
+drift-old-new,旧↔新实现前向谱差异量化（引擎输出跨构建漂移机制上界）,PASS(信息)
+engine-regression,ci-smoke 全量：五引擎分块不变性 + 7 动词 + ffprobe 体检,PASS
+ci-smoke-extended,ci-smoke.sh 并入 FFT 自检+numpy 对照后复跑全绿,PASS
+ci-workflow-yaml,linux-engine.yml 增 python3-numpy 后语法校验,PASS
+ci-workflow-run,Actions 真机执行（push 后回填）,PENDING
+compile-mingw,Windows MinGW 编译复验（header-only 无平台 API，随 wp-1.0 round-4）,PENDING(round-4)

@@ -24,7 +24,7 @@
 | WP-1.0 | 热修包（2026-10-14 架构审视产出：A1 转码分块排水 / A11 关窗取消 / A12 流复制取消 / A14 override / A2 引擎异常屏障——**五项代码全部落地**，Linux 侧 round-1/2 全绿含错误注入；2026-10-17 round-3 带真实模型补测：发现并修复分离器 avail 截断除法越界崩溃，ai/sep 三动词全通；分离路径稳态 RSS 2.6GB 另记 WP-1.4，证据 `docs/acceptance/wp-1.0-hotfix/matrix.csv`） | `architecture-review.md` §3/§6.1 | R12/R13、NFR-P4 | S | 无（先行；剩 Windows round-4：编译 + 带模型 CLI 冒烟 + ≥2h 素材 RSS 复验 + GUI 交互，runbook 见同目录 `round-4-windows.md`） |
 | WP-1.1 | parity 测试基建（金样本/指标/用例/比较器） | `parity-test-plan.md` | P0#1、NFR-Q1/Q2、NFR-M2 | M | WP-1.2（Linux 跑 DUT）或 Windows 手跑 |
 | WP-1.2 | Linux 引擎测试构建 + CMake 分层 + CI 双跑（**1.2a 已落地 2026-10-18**：engine/video_handler/engine_test 三目标 + fetch-deps.sh + linux-test preset，五引擎分块不变性全绿，证据 `docs/acceptance/wp-1.2-linux-build/`；**1.2b 工作流已写**：`linux-engine.yml` + ci-smoke.sh 本地全绿，真机跑待 push；剩 1.2c 随 WP-1.7） | `ci-build-strategy.md` | NFR-M2/M4、P0 债「D:/qt6 硬编码」 | M | 无（先行） |
-| WP-1.3 | FFT 重写（twiddle 表 + 2 的幂直通 + Bluestein 精度） | `fft-rewrite.md` | P0#2 | M | 无 |
+| WP-1.3 | FFT 重写（**已落地 2026-10-18**：twiddle double 主表 + 2 的幂直通 + Bluestein 加固，FFT-PR 五项全绿 + 引擎回归全绿，直通 6.5–6.9× 提速；证据 `docs/acceptance/wp-1.3-fft-rewrite/`，Windows 编译随 round-4） | `fft-rewrite.md` | P0#2 | M | 无 |
 | WP-1.4 | 分离器输出契约校验（+引擎 I/O 断言补强；2026-10-17 增两项输入：avail 截断除法崩溃已单独热修，分离路径稳态 RSS ~2.6GB 须一并压回 ≤2GB，证据 `acceptance/wp-1.0-hotfix/round-3.md`） | `separator-output-validation.md` | P0#3、NFR-R4、NFR-P4 | S | 无 |
 | WP-1.5 | 采样率策略：跟随源，消灭 44.1k 往返 | `canonical-rate-48k.md` | P0#4、NFR-Q3 | M | WP-1.1（回归保护） |
 | WP-1.6 | hum 陷波 50/60Hz 参数化 | `hum-notch-60hz.md` | P0#5、FR-3 | S | 无 |

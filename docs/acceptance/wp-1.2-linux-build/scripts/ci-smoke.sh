@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# ci-smoke.sh — CI 与本地通用的引擎回归（WP-1.2）：分块不变性 + CLI 冒烟 + ffprobe 体检
+# ci-smoke.sh — CI 与本地通用的引擎回归（WP-1.2）：分块不变性 + FFT 属性 + CLI 冒烟 + ffprobe 体检
 # 用法：./ci-smoke.sh [构建目录=build-linux]
-# 前置：构建目录内 engine_test/video_handler 已就绪，third_party 两模型在位（fetch-deps.sh）
+# 前置：构建目录内 engine_test/fft_test/video_handler 已就绪，third_party 两模型在位（fetch-deps.sh），
+#       FFT-PR-005 需 python3 + numpy（CI 由工作流安装 python3-numpy）
 # 产物落 mktemp 临时目录，退出即清；任一断言失败即非零退出
 set -euo pipefail
 cd "$(dirname "$0")/../../../.." # scripts→wp-1.2-linux-build→acceptance→docs→仓库根
@@ -9,8 +10,9 @@ cd "$(dirname "$0")/../../../.." # scripts→wp-1.2-linux-build→acceptance→d
 
 BUILD="${1:-build-linux}"
 ET="$BUILD/engine_test"
+FT="$BUILD/fft_test"
 VH="$BUILD/video_handler"
-for b in "$ET" "$VH"; do [ -x "$b" ] || { echo "FAIL: 缺 $b（先构建）"; exit 1; }; done
+for b in "$ET" "$FT" "$VH"; do [ -x "$b" ] || { echo "FAIL: 缺 $b（先构建）"; exit 1; }; done
 GTCRN=third_party/models/denoiser/gtcrn_simple.onnx
 UVR=third_party/models/separator/UVR-MDX-NET-Voc_FT.onnx
 for m in "$GTCRN" "$UVR"; do [ -f "$m" ] || { echo "FAIL: 缺 $m（先跑 fetch-deps.sh）"; exit 1; }; done
@@ -24,6 +26,10 @@ ffmpeg -y -loglevel error -f lavfi -i "sine=frequency=440:sample_rate=44100:dura
 ffmpeg -y -loglevel error -f lavfi -i "testsrc2=size=320x240:rate=25:duration=3" -f lavfi -i "sine=frequency=440:duration=3" -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest "$WORK/tiny.mp4"
 ffmpeg -y -loglevel error -i "$WORK/st.wav" -f f32le -c:a pcm_f32le -ar 44100 -ac 2 "$WORK/st.f32"
 ffmpeg -y -loglevel error -i "$WORK/st.wav" -f f32le -c:a pcm_f32le -ar 16000 -ac 1 "$WORK/mo.f32"
+
+echo "== FFT 属性（WP-1.3：FFT-PR-001..004 自检 + PR-005 numpy 对照，判据 spec/fft-rewrite.md §3）=="
+"$FT" self
+python3 docs/acceptance/wp-1.3-fft-rewrite/scripts/fft-numpy-check.py "$FT"
 
 echo "== 分块不变性（一次性 vs 4096 vs 977，输出须逐字节一致）=="
 invariance() { # invariance <engine> <in.f32> [参数...]

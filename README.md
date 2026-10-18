@@ -17,7 +17,7 @@
 - **解码/封装**：FFmpeg（so-name 63/61/7，LGPL 套件）
 - **AI 推理**：ONNX Runtime 1.30（C++ API）
 - **变调**：SoundTouch 2.3.3
-- **FFT**：自研 `util/fft.h`（基-2 + Bluestein 任意长度）
+- **FFT**：自研 `util/fft.h`（twiddle double 主表基-2 + Bluestein 任意长度，2 的幂直通）
 
 ## 目录结构
 
@@ -91,6 +91,8 @@ cmake --build --preset linux-test
 ```bash
 engine_test <dsp|ai|pitch|sep-voc|sep-inst> <in.f32> <out.f32> [块帧数=4096] [模型路径|半音数]
 ```
+
+另有 `fft_test`——FFT 性质 DUT（`fft_test self` 跑往返/Parseval/线性/冲激自检，`fft_test dump <n> <前缀>` 产出 numpy 对照裸流，配 `docs/acceptance/wp-1.3-fft-rewrite/scripts/fft-numpy-check.py`）。
 
 ## CLI 用法
 
