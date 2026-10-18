@@ -36,18 +36,18 @@ engine_test    可执行（仅非 WIN32/测试构建）：headless 驱动 libeng
 - 模型文件走 fetch-deps（gtcrn ~小 / UVR-MDX ~大，缓存重要）。
 - 触发：PR + main push；linux-engine 必绿才允许合（分支保护后续配）。
 
-## 4. 依赖版本矩阵（NFR-M3，实现时填 SHA256）
+## 4. 依赖版本矩阵（NFR-M3；2026-10-18 WP-1.2a 落地，fetch-deps.sh 内嵌哈希与此一一对应）
 
 | 依赖 | 版本 | 来源 | 用途/备注 |
 |---|---|---|---|
 | Qt | 6.11.1 (mingw_64 / apt) | qt.io aqtinstall / apt | Widgets(GUI) + Core(引擎) |
 | MinGW GCC | 13.1 | Qt Tools | Windows 工具链 |
 | Ninja | 随 Qt Tools / apt | — | 生成器 |
-| FFmpeg | 9.0 LGPL shared（BtbN win64-lgpl-shared-9.x；Linux 用 apt 或官方 tgz） | BtbN / apt | 见 §5 统一决策 |
-| ONNX Runtime | 1.30.0 CPU | 官方 release tgz | Linux/Windows 各取对应包 |
-| SoundTouch | 2.3.3 | surina.net 源码编译 | Linux 侧同法编 `.a`（工作量小，README 已有配方） |
-| GTCRN 模型 | gtcrn_simple.onnx | sherpa-onnx release | 许可核验中（O1） |
-| MDX 模型 | UVR-MDX-NET-Voc_FT.onnx | hf-mirror / HF | 标注来源（NFR-C2） |
+| FFmpeg | 9.0 LGPL shared（BtbN win64-lgpl-shared-9.x；Linux 用 apt 或官方 tgz） | BtbN / apt | 见 §5 统一决策；本 Linux apt 实测 62.3.100（FFmpeg 8），与 Windows 9 有次版本漂移，引擎层不受影响（仅 fftranscoder/ffextractor 用稳定 API） |
+| ONNX Runtime | 1.30.0 CPU | 官方 release tgz | Linux 统一走 `third_party/ort/linux`（fetch-deps 下载，SHA256 `a5ed5a3cac51fbb2e90da632ae43d19212faaa20e76484e62bcb7c23ddb3b3fd`）；本机 apt 曾是 1.23.2（round-3 证据实际跑在 1.23.2 上，1.30.0 复跑差异 ≈−166dB 属版本噪声） |
+| SoundTouch | 2.3.3 | surina.net 源码编译 | Windows 静态编 `.a`；Linux 本机 apt 实测 2.4.0（API 稳定），矩阵待 CI 定版 |
+| GTCRN 模型 | gtcrn_simple.onnx | sherpa-onnx release | SHA256 `e77603ac0c23dac3227dd2d7135b3a585cbee2679048aecfa886657d3ae1b534`；O1 已关闭 |
+| MDX 模型 | UVR-MDX-NET-Voc_FT.onnx | hf-mirror / HF | SHA256 `534b2070fcc7df514b13ef660dc8cbb328679c2374d04354a5c42bb14ecce111`；标注来源（NFR-C2） |
 
 矩阵是唯一事实源：fetch-deps 脚本、CI、THIRD-PARTY 清单（NFR-C2）都从它生成/对照。
 

@@ -1,0 +1,17 @@
+case,说明,round-1(Linux 2026-10-18)
+fetch-deps-check,--check 自检（缺失报 1 / 齐备报 0，零副作用）,PASS
+fetch-deps-run,获取 ORT 1.30.0 tgz + 两模型（SHA256 校验；已在位哈希符合即跳过）,PASS
+configure-linux,cmake --preset linux-test 配置三目标,PASS
+build-linux,libengine.a + video_handler + engine_test 构建零警告,PASS
+chunk-dsp,DSP 降噪分块不变性（一次性 vs 4096 vs 977）,PASS
+chunk-pitch,变调分块不变性（同上三种）,PASS
+chunk-ai,GTCRN 分块不变性（一次性 vs 4096 vs 977 vs 257）,PASS
+chunk-sep-voc,人声分离分块不变性（一次性 vs 4096 vs 977；avail 修复当事引擎）,PASS
+chunk-sep-inst,伴奏分离分块不变性（同上三种）,PASS
+cli-7verbs,新构建 7 动词冒烟全 OK,PASS
+byte-identity-nonort,transcode/denoise/pitch 输出与 round-3 构建逐字节一致,PASS
+ort-version-drift,ai/sep 输出 ORT 1.23.2↔1.30.0 差异量化（信息项：均差 ≤5.3e-9 ≈ −166dB ≪ −60dB 阈）,PASS
+edge-sep-short,分离短输入（0.1s）干净 FAIL exit=1,PASS
+edge-ai-garbage,垃圾模型干净 FAIL exit=1 无半成品残留,PASS
+ort130-sep-rss,分离路径 RSS 在 ORT 1.30.0 下仍 ~2.6GB（WP-1.4 发现复证，非 1.23 特有）,FAIL(归 WP-1.4)
+compile-mingw,分层后 Windows MinGW 构建（WIN32 分支本机不可验，runbook 复验）,PENDING(round-4)

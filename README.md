@@ -47,9 +47,12 @@ third_party/          # 第三方依赖（不入库，见下）
 third_party/
 ├── ffmpeg/{include,lib,bin}   # 头文件 + 导入库 + 4 个 DLL
 ├── ort/{include,lib,bin}      # ONNX Runtime 1.30.0 CPU
+├── ort/linux/{include,lib}    # Linux 侧：fetch-deps.sh 解出的官方 1.30.0
 ├── soundtouch/{include,lib}   # 2.3.3 静态库
 └── models/{denoiser,separator}# 两个 ONNX 模型
 ```
+
+Linux 侧只需 `./scripts/fetch-deps.sh`（ORT linux 包 + 两模型，含 SHA256 校验）；FFmpeg/SoundTouch/Qt 走 apt。
 
 | 依赖 | 获取方式 |
 |------|---------|
@@ -62,6 +65,8 @@ third_party/
 
 ## 构建
 
+### Windows（产品目标平台）
+
 环境：Qt6（mingw_64）+ MinGW 13.1 + Ninja。`CMakePresets.json` 内的 `CMAKE_PREFIX_PATH` / 编译器路径需按本机调整。
 
 ```bash
@@ -70,6 +75,22 @@ cmake --build --preset mingw-release
 ```
 
 Release 产物落 `src/bin/`，Debug 落 `src/bin-dbg/`。POST_BUILD 自动把 FFmpeg/ORT DLL、模型、Qt/MinGW 运行时收进 exe 目录，实现自包含分发。
+
+### Linux（引擎测试构建）
+
+Qt6/FFmpeg/SoundTouch 用 apt（`qt6-base-dev`、`libavformat-dev` 等 + `libsoundtouch-dev`），ORT 与模型一条脚本备齐：
+
+```bash
+./scripts/fetch-deps.sh        # ORT 1.30.0 官方 tgz + 两模型，SHA256 校验；--check 为零副作用自检
+cmake --preset linux-test
+cmake --build --preset linux-test
+```
+
+产物在 `build-linux/`：`video_handler`（CLI 同 Windows）+ `engine_test`——无头引擎 DUT，裸 f32 交错流直调引擎（绕过 GUI 与重采样），分块不变性与后续 parity 测试的宿主：
+
+```bash
+engine_test <dsp|ai|pitch|sep-voc|sep-inst> <in.f32> <out.f32> [块帧数=4096] [模型路径|半音数]
+```
 
 ## CLI 用法
 

@@ -1,6 +1,6 @@
 # Linux 测试构建（WP-1.2 的种子，2026-10-14 架构审视热修验证用）
-# 独立存在的原因：产品 CMakeLists 为 MinGW 专用接线（third_party .a/DLL 绝对路径、-mthreads、
-# POST_BUILD 拷 DLL），Linux 上不可用；WP-1.2 CMake 分层落地后本文件退役。
+# 【已退役 2026-10-18】主仓库 CMakeLists 分层后 `cmake --preset linux-test` 即可在 Linux 构建，
+# 本文件仅供 round-1/2 的 A1 RSS 对照（build-pre=修复前 worktree）复现，勿再新增用途。
 # 用法：
 #   cmake -B build-post -DVH_SRC_DIR=<主仓库>/src -G Ninja && cmake --build build-post
 #   cmake -B build-pre -DVH_SRC_DIR=/home/psh/vh-prefix/src -G Ninja && cmake --build build-pre

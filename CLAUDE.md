@@ -14,8 +14,9 @@ VideoHandler — Qt6 Widgets + FFmpeg + ONNX Runtime 的音频处理桌面软件
 
 - 目标平台 **Windows x64**；工具链 Qt 6.11 (mingw_64) + MinGW GCC 13.1 + Ninja + ONNX Runtime 1.30 CPU + FFmpeg 9 LGPL shared。
 - 配置 `cmake --preset mingw-release`，构建 `cmake --build --preset mingw-release`，产物 `src/bin/`；debug 用 `mingw-debug` → `src/bin-dbg/`。
-- ⚠ `CMakePresets.json` 与 `CMakeLists.txt` 末尾硬编码 `D:/qt6/...` 绝对路径（已知债，NFR-M4 要消灭）。**本 Linux 环境不可直接构建**；Windows 上需按机器调整路径。
-- ⚠ `third_party/` 不入库（.gitignore 已配），按 README 手工获取（ffmpeg/ort/soundtouch/models 四套），缺失时构建必败。
+- Linux 侧有测试构建（WP-1.2a）：`./scripts/fetch-deps.sh` 备齐 ORT 1.30.0（`third_party/ort/linux`）与两模型后 `cmake --preset linux-test && cmake --build --preset linux-test` → `build-linux/`；FFmpeg/SoundTouch/Qt 走 apt pkg-config。产物含 `engine_test`（无头引擎 DUT：裸 f32 直调引擎，分块不变性/parity 宿主，用法见其 `--help` 输出；仅非 WIN32）。验收证据 `docs/acceptance/wp-1.2-linux-build/`。
+- `CMakeLists.txt` 已分层：`engine` 静态库（引擎+转码底座）+ `video_handler` 应用；`QT_BIN`/`MINGW_BIN` 为 cache 变量（mingw preset 供 `D:/qt6` 默认、`-D` 可覆盖）。**Windows 分支仍需 round-4 真机复验**。
+- ⚠ `third_party/` 不入库（.gitignore 已配）：Windows 按 README 手工获取（ffmpeg/ort/soundtouch 三套），Linux 只需 `fetch-deps.sh`（ORT+模型）。
 - 改动引擎后必跑 CLI 冒烟（免 GUI 自动验证，`src/main.cpp` 的 run_cli）：
   ```
   video_handler --transcode-wav  <in> <out.wav>
@@ -44,6 +45,7 @@ service/ 引擎        全部实现 IStreamEngine { inRate / inChannels / proces
 util/fft.h           自研 FFT（基-2 + Bluestein 任意长度）
 util/ffutil.h        FFmpeg 错误码/扩展名胶水
 model/data.h         全局常量（kCanonicalRate=44100、后缀、模型相对路径）
+test/engine_test     无头引擎 DUT（仅非 WIN32；裸 f32 直调引擎，分块不变性/parity 宿主）
 ```
 
 关键约定（新代码必须遵守）：
