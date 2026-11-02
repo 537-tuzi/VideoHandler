@@ -29,18 +29,28 @@ static int run_cli(int argc, char* argv[]) {
         int rate = 0, channels = 0;
         FFTranscoder::probeSourceSpec(in, &rate, &channels);// 直通引擎与输出规格均跟随源（P0 债 #4）
         DspDenoiser passthrough;
-        passthrough.setup(rate, channels, false, false);// 无滤波即直通
+        passthrough.setup(rate, channels, HumBase::Off, false);// 无滤波即直通
         out = FFTranscoder::transcodeStreamWav(in, QString::fromLocal8Bit(argv[3]), passthrough, nullptr, &err);
     }
     else if (mode == QStringLiteral("--denoise-wav")) {
         if (argc < 4) {
-            QTextStream(stdout) << "FAIL: 用法 --denoise-wav <输入> <输出.wav>\n";
+            QTextStream(stdout) << "FAIL: 用法 --denoise-wav <输入> <输出.wav> [50|60]\n";
             return 1;
+        }
+        HumBase humBase = HumBase::Hz50;// 缺省 50Hz 向后兼容
+        if (argc >= 5) {
+            const QString hum = QString::fromLocal8Bit(argv[4]);
+            if (hum == QLatin1String("50")) humBase = HumBase::Hz50;
+            else if (hum == QLatin1String("60")) humBase = HumBase::Hz60;
+            else {
+                QTextStream(stdout) << "FAIL: hum 基频参数只接受 50 或 60（用法 --denoise-wav <输入> <输出.wav> [50|60]）\n";
+                return 1;
+            }
         }
         int rate = 0, channels = 0;
         FFTranscoder::probeSourceSpec(in, &rate, &channels);// 陷波/高通系数在源率上计算，48k 全链免重采样
         DspDenoiser denoiser;
-        denoiser.setup(rate, channels, true, true);
+        denoiser.setup(rate, channels, humBase, true);
         out = FFTranscoder::transcodeStreamWav(in, QString::fromLocal8Bit(argv[3]), denoiser, nullptr, &err);
     }
     else if (mode == QStringLiteral("--ai-denoise")) {
@@ -122,6 +132,8 @@ int main(int argc, char* argv[]) {
         return run_cli(argc, argv);
     }
     QApplication a(argc, argv);
+    a.setOrganizationName(QStringLiteral("VideoHandler"));// QSettings 定位配置须先有组织/应用名
+    a.setApplicationName(QStringLiteral("VideoHandler"));
     auto mediaService = std::make_unique<MediaService>();// 媒体服务
     MainWidget w;
     w.setWindowTitle(QString::fromUtf8(kAppTitle));

@@ -38,7 +38,7 @@ service/mediaservice QThread worker 调度 + busy 锁 + 取消原子量（一次
 service/ffextractor  任务执行者；静态核心供 CLI 复用
 service/fftranscoder 唯一转码通路：解码 → swr 到引擎规格 → 引擎 → swr 回 44.1k → WAV(f32)
 service/ 引擎        全部实现 IStreamEngine { inRate / inChannels / process / flush }
-  dspdenoiser        RBJ biquad 陷波(50Hz×3) + 高通，无内部缓冲
+  dspdenoiser        RBJ biquad 陷波(50/60Hz×3 可选，HumBase) + 高通，无内部缓冲
   aidenoiser         GTCRN 流式（16k 单声道；STFT/WOLA 自实现；ORT 用 PIMPL 隔离）
   pitchshifter       SoundTouch 封装
   vocalseparator     UVR MDX-Net（44.1k 立体声；末 10000KiB MD5 查内置官方表取参；plane-major 输出契约校验）
@@ -64,7 +64,7 @@ test/fft_test        FFT 性质 DUT（仅非 WIN32；FFT-PR 自检 + numpy 对�
 2. `util/fft.h`：Bluestein 全 float 有精度风险；MDX 对 2 的幂帧也走 Bluestein（慢且亏精度，应直通基-2）；radix-2 无 twiddle 预计算表——**已修（2026-10-18，WP-1.3）**：twiddle double 主表 + 2 的幂直通 + Bluestein 加固（chirp 整数索引查表 / b 序列 init 期 double / 运行期 chirp double 直乘，频域卷积仍 float），FFT-PR 五项全绿（往返最差 −132dB vs −130 门槛、numpy 对照 −137dB 起），512/16k 直通提速 6.5–6.9×；`fft_test` DUT 入 ci-smoke；证据 `docs/acceptance/wp-1.3-fft-rewrite/`。Windows 编译随 round-4。
 3. `vocalseparator` 输出读法与参数双双有错（2026-10-14 调研实锤）——**已修（2026-10-18，WP-1.4）**：plane-major `[1,4,dimF,dimT]` 读法、末 10000KiB MD5 查内置 UVR 官方表取参（nFft=dimF*2 推导废除）、前 3 频点置零、compensate/primary_stem 语义（副 stem = mix − compensate×主 stem，实测 1.02100）、输出契约校验（dtype/shape/布局，负例三分支全中且无残留）；顺修 avail 截断除法假帧越界与 RSS：`DisableCpuMemArena()` 后 120s 峰值 1.48GB（原 2.58GB）过 NFR-P4；另修复 wantSub 公式取反（两 stem 角色曾对调）。数值 parity 对照官方归 WP-1.1；Windows 随 round-4。证据 `docs/acceptance/wp-1.4-separator-contract/`。
 4. `kCanonicalRate=44100` 对视频源（48k）造成两次重采样；canonical 应改 48k 可配置（NFR-Q3）——**已修（2026-11-02，P0 #4）**：输出规格改为跟随源（限幅 8k–192k、声道 min(源,2)），transcode/denoise/pitch 三路引擎 setup 前经 `probeSourceSpec` 取源规格、48k 源全链免重采样（PAR-SR-001 bit-exact）；AI 降噪/人声分离显式保持兜底 44.1k（模型工作点锁定）；NFR-Q3 落实口径=`docs/spec/canonical-rate-48k.md`，证据 `docs/acceptance/engine-parity/round-5.md`。Windows 随 round-4 真机。
-5. `dspdenoiser` 50Hz 硬编码（60Hz 电网地区无效）。
+5. `dspdenoiser` 50Hz 硬编码（60Hz 电网地区无效）——**已修（2026-11-03，P0 #5）**：`setup` 参数改 `HumBase{Off,Hz50,Hz60}` 全链贯通（CLI `--denoise-wav [50|60]` 缺省 50、engine_test dsp 动词同参、GUI 下拉+QSettings 记忆缺省 50Hz）；PAR-DS-005（hum60 vs scipy float32 同构 −51.4dB）+ 50Hz 族回归逐字节一致，证据 `docs/acceptance/engine-parity/round-6.md`。GUI 运行时行为待 Windows round-4 真机补验。
 6. LGPL 合规：SoundTouch 静态链接 + FFmpeg 构建混用（gyan 导入库 + BtbN DLL）需修正（NFR-C3）。
 7. `IStreamEngine::process` 每次堆分配返回 vector——实时化前需加 `processInto` 零分配变体（NFR-L2）。
 8. `fftranscoder` 引擎输出缓冲曾全程驻留内存（2h@44.1k 立体声 ≈2.37GiB 破 NFR-P4；2026-10-14 架构审视 A1，`docs/spec/architecture-review.md`）——已热修 feedAi 分块后就地排水，Linux 已复验（2h 素材峰值 57MB vs 修复前 2.80GiB，输出逐字节一致；`docs/tmp/linux-build/smoke-results.txt`），**待 Windows 同款复验关闭 R12**（runbook：`docs/acceptance/wp-1.0-hotfix/round-4-windows.md`）。

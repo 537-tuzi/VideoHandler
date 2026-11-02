@@ -11,7 +11,7 @@ float DspDenoiser::Biquad::run(float x, int ch) {
     return y;
 }
 
-void DspDenoiser::setup(int sampleRate, int channels, bool removeHum, bool removeWind) {
+void DspDenoiser::setup(int sampleRate, int channels, HumBase humBase, bool removeWind) {
     auto makeNotch = [sampleRate](double f0, double q) {// RBJ 陷波
         double w0 = 2 * kPi * f0 / sampleRate;
         double cw = cos(w0), alpha = sin(w0) / (2 * q), a0 = 1 + alpha;
@@ -35,9 +35,11 @@ void DspDenoiser::setup(int sampleRate, int channels, bool removeHum, bool remov
         return b;
     };
     filters.clear();
-    if (removeHum)
-        for (int h = 1; h <= 3; ++h)// 50Hz 电流 hum 及其 2/3 次谐波
-            filters.push_back(makeNotch(50.0 * h, 30.0));
+    if (humBase != HumBase::Off) {
+        const double base = humBase == HumBase::Hz60 ? 60.0 : 50.0;// 电网制式基频
+        for (int h = 1; h <= 3; ++h)// 电流 hum 基频及其 2/3 次谐波
+            filters.push_back(makeNotch(base * h, 30.0));
+    }
     if (removeWind)
         filters.push_back(makeHighpass(100.0, 0.7071));// 风声低频隆隆
     for (auto& f : filters) {

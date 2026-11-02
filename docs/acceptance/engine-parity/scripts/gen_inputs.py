@@ -53,7 +53,7 @@ CASES = [
     ('sine440',   sine(440, 5.0, SR_ST, 2),    SR_ST, 'PAR-PT 变调往返靶（round-1 判据口径）'),
     ('white',     white(5.0, SR_ST, 2),        SR_ST, '全频带'),
     ('hum50',     hum(50, 5.0, SR_ST),         SR_ST, 'DSP 50Hz 靶'),
-    ('hum60',     hum(60, 5.0, SR_ST),         SR_ST, 'DSP 60Hz 靶（WP-1.6 后）'),
+    ('hum60',     hum(60, 5.0, SR_ST),         SR_ST, 'DSP 60Hz 靶（PAR-DS-005）'),
     ('white16mo', white(5.0, SR_MO, 1),        SR_MO, 'GTCRN 全频带'),
     ('sine16mo',  sine(1000, 5.0, SR_MO, 1),   SR_MO, 'GTCRN sanity'),
     ('odd',       white(1024 * 7 + 123, 0, 0, 0) if False else None, SR_ST, '非整 hop 尾（1024*7+123 样本）'),

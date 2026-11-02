@@ -4,7 +4,7 @@
 // 用法：engine_test <dsp|ai|pitch|sep-voc|sep-inst> <in.f32> <out.f32> [块帧数=4096] [参数]
 //   输入须为引擎原生规格的交错 float32 裸流：dsp/pitch/sep 为 44100Hz 2ch，ai 为 16000Hz 1ch
 //   （ffmpeg 生成：ffmpeg -i x.wav -f f32le -c:a pcm_f32le -ar 44100 -ac 2 out.f32）
-//   ai/sep 的 [参数] = 模型路径；pitch 的 [参数] = 半音数（默认 2.0）
+//   ai/sep 的 [参数] = 模型路径；pitch 的 [参数] = 半音数（默认 2.0）；dsp 的 [参数] = hum 基频 50|60（默认 50）
 #include "service/aidenoiser.h"
 #include "service/dspdenoiser.h"
 #include "service/pitchshifter.h"
@@ -47,7 +47,7 @@ void usage()
     fprintf(stderr,
             "用法：engine_test <dsp|ai|pitch|sep-voc|sep-inst> <in.f32> <out.f32> [块帧数=4096] [参数]\n"
             "  dsp/pitch/sep 输入 44100Hz 2ch 交错 f32；ai 输入 16000Hz 1ch f32\n"
-            "  ai/sep 参数=模型路径；pitch 参数=半音数（默认 2.0）\n");
+            "  ai/sep 参数=模型路径；pitch 参数=半音数（默认 2.0）；dsp 参数=hum 基频 50|60（默认 50）\n");
 }
 
 }// namespace
@@ -70,8 +70,18 @@ int main(int argc, char* argv[])
     std::unique_ptr<IStreamEngine> eng;
     QString err;
     if (kind == QStringLiteral("dsp")) {
+        HumBase humBase = HumBase::Hz50;// 缺省 50，与 --denoise-wav 向后兼容口径一致
+        if (argc >= 6) {
+            const QString b = QString::fromLocal8Bit(argv[5]);
+            if (b == QLatin1String("50")) humBase = HumBase::Hz50;
+            else if (b == QLatin1String("60")) humBase = HumBase::Hz60;
+            else {
+                fprintf(stderr, "FAIL: dsp 参数 hum 基频只接受 50 或 60\n");
+                return 2;
+            }
+        }
         auto* e = new DspDenoiser;
-        e->setup(kCanonicalRate, kCanonicalChannels, true, true);// 与 --denoise-wav 同配置
+        e->setup(kCanonicalRate, kCanonicalChannels, humBase, true);// 与 --denoise-wav 同配置
         eng.reset(e);
     } else if (kind == QStringLiteral("ai")) {
         if (argc < 6) {

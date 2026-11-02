@@ -6,6 +6,7 @@
 #include <functional>
 
 class IStreamEngine;
+enum class HumBase;// hum 基频制式（定义在 dspdenoiser.h，槽参数用）
 
 // FFmpeg 任务执行者：分离/转码/降噪的静态核心供 CLI 复用，slots 供后台线程调度
 class FFExtractor : public QObject
@@ -31,7 +32,7 @@ public slots:
     void doExtractAudio(const QString& inPath);// 后台提取音轨
     void doExtractVideo(const QString& inPath);// 后台提取无声视频
     void doProbe(const QString& inPath);// 后台探测文件流信息
-    void doDenoiseWav(const QString& inPath, bool removeHum, bool removeWind);// 后台降噪转码
+    void doDenoiseWav(const QString& inPath, HumBase humBase, bool removeWind);// 后台降噪转码
     void doDenoiseAiWav(const QString& inPath);// 后台 AI 降噪转码（GTCRN）
     void doPitchWav(const QString& inPath, double semiTones);// 后台变调转码（SoundTouch）
     void doSepVocals(const QString& inPath, bool instrumental);// 后台人声分离/伴奏提取转码（MDX-Net）

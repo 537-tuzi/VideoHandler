@@ -238,11 +238,11 @@ void FFExtractor::runJob(const QString& inPath, IStreamEngine& engine, const cha
     else emit jobDone(true, okMsg + QStringLiteral("：%1").arg(out));
 }
 
-void FFExtractor::doDenoiseWav(const QString& inPath, bool removeHum, bool removeWind) {
+void FFExtractor::doDenoiseWav(const QString& inPath, HumBase humBase, bool removeWind) {
     int rate = 0, channels = 0;
     FFTranscoder::probeSourceSpec(inPath, &rate, &channels);// 工作点跟随源：48k 源全链免重采样（P0 债 #4）
     DspDenoiser denoiser;
-    denoiser.setup(rate, channels, removeHum, removeWind);
+    denoiser.setup(rate, channels, humBase, removeWind);
     runJob(inPath, denoiser, kSuffixDenoised, QStringLiteral("降噪完成"));
 }
 

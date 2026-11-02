@@ -3,11 +3,14 @@
 #include <vector>
 #include "streamengine.h"
 
+// hum 陷波基频制式：Off 不滤（直通），Hz50/Hz60 对应 50/60Hz 电网（FR-3）
+enum class HumBase { Off, Hz50, Hz60 };
+
 // DSP 降噪引擎：陷波滤除电流 hum + 高通滤除风声，无滤波器时为直通
 class DspDenoiser : public IStreamEngine
 {
 public:
-    void setup(int sampleRate, int channels, bool removeHum, bool removeWind);// 初始化滤波器组
+    void setup(int sampleRate, int channels, HumBase humBase, bool removeWind);// 初始化滤波器组
     int inRate() const override;
     int inChannels() const override;
     std::vector<float> process(const float* in, int64_t frames) override;// 副本上原地滤波后返回

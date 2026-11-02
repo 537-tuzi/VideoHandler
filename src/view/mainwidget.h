@@ -5,6 +5,7 @@
 
 class QPushButton;
 class QCheckBox;
+class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
 class QProgressBar;
@@ -34,6 +35,7 @@ private:
     QPushButton* btnInstrumental;
     QPushButton* btnCancel;
     QCheckBox* chkHum;
+    QComboBox* cmbHumBase;// hum 陷波基频制式（50/60Hz，勾选除电流声时使能）
     QCheckBox* chkWind;
     QDoubleSpinBox* spinSemi;
     QLabel* lblFile;

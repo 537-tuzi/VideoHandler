@@ -2,10 +2,11 @@
 """WP-1.1 金样本生成：调参考实现产 golden f32，哈希登记 fixtures.json。
 
 子命令：
-  dsp  <素材名...>          scipy RBJ 级联（与 DspDenoiser 同参：50/100/150Hz Q30 陷波
-                            + 100Hz Q0.7071 高通；sr 取素材在 fixtures.json 登记的元数据，
+  dsp  <素材名...>          scipy RBJ 级联（与 DspDenoiser 同参：基频及 2/3 次谐波 Q30 陷波
+                            + 100Hz Q0.7071 高通；基频随素材走——hum50/60 素材取 50/60Hz，
+                            其余素材对 DUT 缺省 50Hz；sr 取素材在 fixtures.json 登记的元数据，
                             44.1k/48k 素材各自成参考），双精度主参考 + float32 同构参考
-                            （系数/信号均 f32，lfilter f32 累加——hum50 分级判据用，round-1 §2）
+                            （系数/信号均 f32，lfilter f32 累加——hum50/hum60 分级判据用，round-1 §2）
   gtcrn <素材名...>         sherpa-onnx OfflineSpeechDenoiser 同模型推理（16k 单声道裸流直入，
                             num_threads=1 与引擎一致；round-3 实锤输出 = (N//hop)·hop 裁头对齐）
   mdx  <素材名...>          audio-separator 0.47.0 官方管线（UVR-MDX-NET-Voc_FT，torch cpu），
@@ -73,7 +74,8 @@ def do_dsp(names):
     fx = fixtures()
     for name in names:
         sr = float(fx[name]['sr'])# 素材登记采样率：48k 素材（PAR-SR）在源率上成参考，44.1k 素材同旧
-        bs = [rbj_notch(50.0 * h, 30.0, sr) for h in (1, 2, 3)]
+        base = {'hum50': 50.0, 'hum60': 60.0}.get(name, 50.0)# 白名单分派（审查 P2-1）：前缀解析对带后缀素材名会崩；其余素材对 DUT 缺省 50Hz
+        bs = [rbj_notch(base * h, 30.0, sr) for h in (1, 2, 3)]
         hp = rbj_highpass(100.0, 0.7071, sr)
         x64 = np.fromfile(OUT / f'{name}.f32', dtype='<f4').reshape(-1, 2).astype(np.float64)
         y = np.empty_like(x64)

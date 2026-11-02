@@ -4,6 +4,7 @@
 #include "model/data.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -13,13 +14,16 @@
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSettings>
 #include <QVBoxLayout>
+
+#include "service/dspdenoiser.h"// HumBase 制式枚举
 
 MainWidget::MainWidget(QWidget* parent)
     : QWidget(parent), media(nullptr), curFile(),
       btnOpen(nullptr), btnAudio(nullptr), btnVideo(nullptr),
       btnDenoise(nullptr), btnAi(nullptr), btnPitch(nullptr), btnSep(nullptr), btnInstrumental(nullptr), btnCancel(nullptr),
-      chkHum(nullptr), chkWind(nullptr), spinSemi(nullptr),
+      chkHum(nullptr), cmbHumBase(nullptr), chkWind(nullptr), spinSemi(nullptr),
       lblFile(nullptr), lblStatus(nullptr), txtInfo(nullptr), bar(nullptr)
 {
     build_ui();
@@ -36,7 +40,12 @@ void MainWidget::build_ui() {
     btnSep = new QPushButton(QStringLiteral("人声分离导出WAV"), this);
     btnInstrumental = new QPushButton(QStringLiteral("伴奏提取导出WAV"), this);
     btnCancel = new QPushButton(QStringLiteral("取消任务"), this);
-    chkHum = new QCheckBox(QStringLiteral("除电流声(50Hz)"), this);
+    chkHum = new QCheckBox(QStringLiteral("除电流声"), this);
+    cmbHumBase = new QComboBox(this);
+    cmbHumBase->addItem(QStringLiteral("50Hz"));
+    cmbHumBase->addItem(QStringLiteral("60Hz"));// 电网制式：50/60Hz 陷波基频
+    cmbHumBase->setCurrentIndex(QSettings().value(QStringLiteral("humBaseHz"), 50).toInt() == 60 ? 1 : 0);// 记住上次选择，缺省 50Hz
+    cmbHumBase->setEnabled(true);// chkHum 缺省勾选；随勾选状态联动见 init_connect
     chkWind = new QCheckBox(QStringLiteral("除风声(低频)"), this);
     chkHum->setChecked(true);
     chkWind->setChecked(true);
@@ -73,6 +82,7 @@ void MainWidget::build_ui() {
     actRow->addWidget(btnVideo);
     auto* denRow = new QHBoxLayout;
     denRow->addWidget(chkHum);
+    denRow->addWidget(cmbHumBase);
     denRow->addWidget(chkWind);
     denRow->addWidget(btnDenoise);
     denRow->addWidget(btnAi);
@@ -103,6 +113,10 @@ void MainWidget::init_connect() {
     connect(btnSep, &QPushButton::clicked, this, &MainWidget::doSepVocals);
     connect(btnInstrumental, &QPushButton::clicked, this, &MainWidget::doSepInstrumental);
     connect(btnCancel, &QPushButton::clicked, this, &MainWidget::doCancel);
+    connect(chkHum, &QCheckBox::toggled, cmbHumBase, &QComboBox::setEnabled);// 不除电流声时制式选择无效
+    connect(cmbHumBase, &QComboBox::currentIndexChanged, this, [this](int idx) {
+        QSettings().setValue(QStringLiteral("humBaseHz"), idx == 1 ? 60 : 50);// 换制式即记住，下次启动还原
+    });
 }
 
 void MainWidget::setMediaService(MediaService* svc) {
@@ -154,13 +168,16 @@ void MainWidget::doExtractVideo() {
 
 void MainWidget::doDenoiseWav() {
     if (!media || curFile.isEmpty()) return;
-    if (!chkHum->isChecked() && !chkWind->isChecked()) {
+    const bool hum = chkHum->isChecked();
+    if (!hum && !chkWind->isChecked()) {
         lblStatus->setText(QStringLiteral("先勾选要除的噪声类型"));
         return;
     }
+    const HumBase humBase = !hum ? HumBase::Off
+                        : cmbHumBase->currentIndex() == 1 ? HumBase::Hz60 : HumBase::Hz50;
     set_busy(true);
     lblStatus->setText(QStringLiteral("正在降噪并导出 WAV…"));
-    media->denoiseWav(curFile, chkHum->isChecked(), chkWind->isChecked());
+    media->denoiseWav(curFile, humBase, chkWind->isChecked());
 }
 
 void MainWidget::doDenoiseAiWav() {

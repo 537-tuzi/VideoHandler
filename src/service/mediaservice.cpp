@@ -1,12 +1,16 @@
 #include "mediaservice.h"
+#include "dspdenoiser.h"
 #include "ffextractor.h"
 
 #include "model/data.h"
+
+#include <QMetaType>
 
 MediaService::MediaService(QObject* parent)
     : QObject(parent), busy(false), cancelFlag(false),
       thread(new QThread(this)), worker(new FFExtractor)// 无父对象供跨线程迁移
 {
+    qRegisterMetaType<HumBase>();// denoiseRequested 队列投递到后台线程，enum 须注册元类型否则静默投递失败
     worker->setCancelFlag(&cancelFlag);
     worker->moveToThread(thread);
     thread->start();
@@ -80,9 +84,9 @@ void MediaService::sepVocals(const QString& inPath, bool instrumental) {
     emit sepVocalsRequested(inPath, instrumental);// 队列投递到后台线程
 }
 
-void MediaService::denoiseWav(const QString& inPath, bool removeHum, bool removeWind) {
+void MediaService::denoiseWav(const QString& inPath, HumBase humBase, bool removeWind) {
     if (busy) return;
     busy = true;
     cancelFlag = false;
-    emit denoiseRequested(inPath, removeHum, removeWind);// 队列投递到后台线程
+    emit denoiseRequested(inPath, humBase, removeWind);// 队列投递到后台线程
 }

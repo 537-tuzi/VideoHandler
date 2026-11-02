@@ -41,17 +41,20 @@ if ! python3 "$S/gen_inputs.py" >/dev/null 2>&1; then
     exit 0
 fi
 
-echo "== PAR-DS（DSP 降噪 vs scipy 参考；hum50 分级判据 vs float32 同构参考）=="
+echo "== PAR-DS（DSP 降噪 vs scipy 参考；hum50/hum60 分级判据 vs float32 同构参考）=="
 if python3 -c 'import scipy' 2>/dev/null; then
     for m in hum50 white sine1k odd; do
         "$ET" dsp "$OUT/$m.f32" "$W/$m.dut.f32" 4096 >/dev/null || { echo "  FAIL: dsp DUT 运行 $m"; FAIL=1; break; }
     done
+    # PAR-DS-005（round-6，P0 债 #5）：60Hz 制式素材，DUT 显式传 60（其余素材缺省 50 回归）
+    "$ET" dsp "$OUT/hum60.f32" "$W/hum60.dut.f32" 4096 60 >/dev/null || { echo "  FAIL: dsp DUT 运行 hum60"; FAIL=1; }
     if [ "$FAIL" = 0 ]; then
-        python3 "$S/gen_golden.py" dsp hum50 white sine1k odd >/dev/null || { echo "  FAIL: dsp 金样本生成"; FAIL=1; }
+        python3 "$S/gen_golden.py" dsp hum50 white sine1k odd hum60 >/dev/null || { echo "  FAIL: dsp 金样本生成"; FAIL=1; }
         ck python3 "$S/compare.py" "$W/hum50.dut.f32" "$OUT/hum50.dspf.golden.f32" --case PAR-DS-001 --gate -45
         ck python3 "$S/compare.py" "$W/white.dut.f32" "$OUT/white.dsp.golden.f32" --case PAR-DS-002 --gate -60
         ck python3 "$S/compare.py" "$W/sine1k.dut.f32" "$OUT/sine1k.dsp.golden.f32" --case PAR-DS-003 --gate -60
         ck python3 "$S/compare.py" "$W/odd.dut.f32" "$OUT/odd.dsp.golden.f32" --case PAR-DS-004 --gate -60
+        ck python3 "$S/compare.py" "$W/hum60.dut.f32" "$OUT/hum60.dspf.golden.f32" --case PAR-DS-005 --gate -45
     fi
 else
     skip "PAR-DS 缺 scipy（配方 scripts/requirements.txt）"

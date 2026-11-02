@@ -4,7 +4,7 @@
 
 | 功能 | 实现 | 引擎 |
 |------|------|------|
-| 降噪（电流声 50Hz 谐波） | DSP 陷波 ×3 | 双二阶 IIR |
+| 降噪（电流声 50/60Hz 谐波） | DSP 陷波 ×3（制式可选） | 双二阶 IIR |
 | 降噪（风声低频） | DSP 高通 | 双二阶 IIR |
 | 降噪（模糊背景声） | AI 语音增强 | GTCRN（ONNX Runtime 流式） |
 | 变调（-12~+12 半音，不变速） | SoundTouch | PitchShifter |
@@ -100,7 +100,7 @@ engine_test <dsp|ai|pitch|sep-voc|sep-inst> <in.f32> <out.f32> [块帧数=4096] 
 video_handler --extract-audio <输入>                 # 提取音轨
 video_handler --extract-video <输入>                 # 提取无声视频
 video_handler --transcode-wav <输入> <输出.wav>       # 转码
-video_handler --denoise-wav <输入> <输出.wav>         # DSP 降噪
+video_handler --denoise-wav <输入> <输出.wav> [50|60]  # DSP 降噪（hum 基频制式，缺省 50）
 video_handler --ai-denoise <输入> <输出.wav> [模型]    # AI 降噪
 video_handler --pitch-wav <输入> <输出.wav> <半音数>   # 变调
 video_handler --sep-vocals <输入> <输出.wav> [模型]    # 人声分离

@@ -6,6 +6,7 @@
 #include <atomic>
 
 class FFExtractor;
+enum class HumBase;// hum 基频制式（定义在 dspdenoiser.h，信号参数用）
 
 // 媒体服务：调度后台线程执行分离/降噪任务并转发进度
 class MediaService : public QObject
@@ -25,7 +26,7 @@ signals:
     void audioRequested(const QString& inPath);// 音轨任务请求
     void videoRequested(const QString& inPath);// 无声视频任务请求
     void probeRequested(const QString& inPath);// 文件探测请求
-    void denoiseRequested(const QString& inPath, bool removeHum, bool removeWind);// 降噪任务请求
+    void denoiseRequested(const QString& inPath, HumBase humBase, bool removeWind);// 降噪任务请求
     void aiDenoiseRequested(const QString& inPath);// AI 降噪任务请求
     void pitchRequested(const QString& inPath, double semiTones);// 变调任务请求
     void sepVocalsRequested(const QString& inPath, bool instrumental);// 人声分离/伴奏提取任务请求
@@ -36,7 +37,7 @@ public slots:
     void probe(const QString& inPath);// 提交文件探测任务（异步，结果走信号）
     void extractAudio(const QString& inPath);// 提交音轨提取任务
     void extractVideo(const QString& inPath);// 提交无声视频提取任务
-    void denoiseWav(const QString& inPath, bool removeHum, bool removeWind);// 提交降噪任务，输出到源目录
+    void denoiseWav(const QString& inPath, HumBase humBase, bool removeWind);// 提交降噪任务，输出到源目录
     void denoiseAiWav(const QString& inPath);// 提交 AI 降噪任务，输出到源目录
     void pitchWav(const QString& inPath, double semiTones);// 提交变调任务，输出到源目录
     void sepVocals(const QString& inPath, bool instrumental);// 提交人声分离/伴奏提取任务，输出到源目录
