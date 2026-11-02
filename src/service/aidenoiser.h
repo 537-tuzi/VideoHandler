@@ -4,7 +4,7 @@
 #include <memory>
 #include "streamengine.h"
 
-// AI 降噪引擎：GTCRN 流式语音增强（16kHz 单声道），内部带 STFT/重叠相加状态
+// AI 降噪引擎：GTCRN 流式语音增强（16kHz 单声道），center-reflect 帧网格 + WOLA÷Σw² 合成，流式有界
 class AiDenoiser : public IStreamEngine
 {
 public:

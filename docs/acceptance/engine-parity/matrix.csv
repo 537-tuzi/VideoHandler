@@ -1,17 +1,18 @@
-case,round-1,round-2,说明
-PAR-DS-001,PASS,—,DSP hum50：vs float32 同构参考 −50.9dB（分级判据 ≤−45；vs double −15.9dB 归因 float32 系数量化，理论陷波深度上限 −26.7dB，证据 round-1 §2）
-PAR-DS-002,PASS,—,DSP white：vs double 参考 −71.8dB
-PAR-DS-003,PASS,—,DSP sine1k：sanity −75.6dB
-PAR-DS-004,PASS,—,DSP odd：非整 hop 尾 −75.2dB（biquad 无内部缓冲，边界天然一致）
-PAR-GT-001,FAIL,—,GTCRN white16mo：判据修订（残差/RMS输入）后稳态 −59.4dB 未过 −60；帧网格错半窗（knf center/reflect）+ 首尾窗分母补偿缺两债实锤，round-1 §3，修复后复测
-PAR-GT-002,VOID,—,GTCRN sine16mo：正弦非模型工作点，两实现对近零输出分歧无意义，用例废除（换真实语音素材）
-PAR-GT-003,PENDING,—,GTCRN 边界（短于 hop/odd 尾）：随语音素材与引擎债修复一并跑
-PAR-MD-001,PENDING,FAIL,MDX sine1k：纯音泄漏差 23dB（DUT voc 0.233 vs 参考 0.017）+ 近静音小分母；引擎前端谱构嫌疑，round-3 判别（round-2 §4）
-PAR-MD-002,PENDING,FAIL,MDX white：去增益 voc −12.0 / inst −46.7dB corr 0.99999（幅度约定已修判据，round-2 §3）
-PAR-MD-003,PENDING,FAIL,MDX multi12s：去增益 voc −7.8 / inst −44.0dB（多 batch 衔接本身无异常）
-PAR-MD-004,PENDING,VOID,MDX odd（7291 帧=0.165s）：触发引擎最短 ~0.17s 契约被拒（有意行为）→ 用例改 odd1s（round-2 §1）
-PAR-MD-004b,PENDING,FAIL,MDX odd1s（1024·43+123≈1s）：去增益 voc −5.0 / inst −46.4dB corr 0.99999
-PAR-MD-005,PENDING,FAIL,MDX sep-inst compensate 支路：拟合增益 a 与理论 s×peak 三例吻合（compensate 相减支路自洽）；残差同 voc 侧未收敛
-PAR-PT-001,PASS,—,变调 +2∘−2 往返：谱判据全过（长度 0 差 / 峰频 0.00 音分 / 杂散抑制 58.8dB / RMS +0.00dB；逐样本残差 −12.9dB 系 WSOLA 相位漂移，非缺陷）
-PAR-PT-002,PASS,—,变调分块不变（已并入 ci-smoke，此处记交叉引用）
-FFT-PR-001..005,PASS,—,WP-1.3 已落地并入 ci-smoke（交叉引用 wp-1.3-fft-rewrite/matrix.csv）
+case,round-1,round-2,round-3,说明
+PAR-DS-001,PASS,—,—,DSP hum50：vs float32 同构参考 −50.9dB（分级判据 ≤−45；vs double −15.9dB 归因 float32 系数量化，理论陷波深度上限 −26.7dB，证据 round-1 §2）
+PAR-DS-002,PASS,—,—,DSP white：vs double 参考 −71.8dB
+PAR-DS-003,PASS,—,—,DSP sine1k：sanity −75.6dB
+PAR-DS-004,PASS,—,—,DSP odd：非整 hop 尾 −75.2dB（biquad 无内部缓冲，边界天然一致）
+PAR-GT-001,FAIL,—,PASS,GTCRN white16mo：−123.9dB vs golden（残差/RMS输入口径 −156.0）corr 1.000000 n=79872；两债修复（反射帧网格 + WOLA÷Σw² + 反射尾帧）后机器精度，主线程独立复验
+PAR-GT-002,VOID,—,—,GTCRN sine16mo：正弦非模型工作点，用例废除（换真实语音素材）
+PAR-GT-003,PENDING,—,PASS,GTCRN 边界组：N=100/255 双方零输出（长度约定一致）；N=256 深折叠 −88.9dB；N=1025/4097 −120.8/−117.5dB；分块不变（4096 vs 97）逐字节一致
+PAR-MD-001,PENDING,FAIL,PASS,MDX sine1k-voc：−107.6dB corr 1.000000（round-3 判据同工作点+引擎块级化；round-2 曾 corr 0.05）
+PAR-MD-002,PENDING,FAIL,PASS,MDX white-voc：−109.2dB corr 1.000000（round-2 −12.0dB）
+PAR-MD-003,PENDING,FAIL,PASS,MDX multi12s-voc：−110.9dB corr 1.000000（round-2 −7.8dB；多块素材验证块级 OLA 复刻）
+PAR-MD-004,PENDING,VOID,VOID,MDX odd（7291 帧=0.165s）：触发引擎最短 ~0.17s 契约被拒（有意行为）→ 用例改 odd1s（round-2 §1）
+PAR-MD-004b,PENDING,FAIL,PASS,MDX odd1s-voc：−109.9dB corr 1.000000（round-3a 修复后即机器精度，单块素材）
+PAR-MD-005,PENDING,FAIL,PASS,MDX sep-inst compensate 支路：全 inst 用例 −127~−145dB（域重建后副 stem 两项同域；round-2 −44~−47dB）
+PAR-PT-001,PASS,—,—,变调 +2∘−2 往返：谱判据全过（长度 0 差 / 峰频 0.00 音分 / 杂散抑制 58.8dB / RMS +0.00dB；逐样本残差 −12.9dB 系 WSOLA 相位漂移，非缺陷）
+PAR-PT-002,PASS,—,—,变调分块不变（已并入 ci-smoke，此处记交叉引用）
+FFT-PR-001..005,PASS,—,—,WP-1.3 已落地并入 ci-smoke（交叉引用 wp-1.3-fft-rewrite/matrix.csv）
+回归,——,—,PASS,round-3 统一构建 ci-smoke 全绿（FFT 属性 + 五引擎分块不变 + 7 CLI 动词 + ffprobe 体检；w3 时长断言按 (N//hop)·hop 约定改区间断言）

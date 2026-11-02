@@ -10,10 +10,10 @@ NFR-Q1 落地：五引擎对照官方/独立参考实现的数值 parity 测试�
 |---|---|---|
 | SG-1 基建 | 素材生成 gen_inputs.py + 比较器 compare.py + fixtures.json 哈希防漂移 | round-1 完成 |
 | SG-2 DSP parity | scipy 双精度 RBJ+lfilter 参考 vs dspdenoiser（PAR-DS） | round-1 全绿（hum50 走 float32 同构参考分级判据，理由 round-1 §2） |
-| SG-3 GTCRN parity | sherpa-onnx 同模型推理参考 vs aidenoiser（PAR-GT，对齐点=首 hop 吞吐约定） | round-1 未收敛：判据修订（残差/RMS输入，−59.4dB）+ 两引擎债实锤（帧网格半窗偏移、首尾窗分母补偿缺），round-2 修后复测 |
-| SG-4 MDX parity | audio-separator 官方管线 vs vocalseparator（PAR-MD，边界=反射填充） | round-2 落地并首轮对照：未收敛——幅度约定实锤（判据已修 --fit-scale）+ 纯音泄漏差 23dB 引擎前端谱构嫌疑（主）+ 块级 OLA vs 帧级 WOLA 架构差异（次），round-3 判别归因 |
+| SG-3 GTCRN parity | sherpa-onnx 同模型推理参考 vs aidenoiser（PAR-GT，对齐点=首 hop 吞吐约定） | **round-3 全绿**：主用例 −123.9dB（残差/RMS输入 −156.0）+ 边界组全过。两债修复 = 反射帧网格（center+双侧 reflect）+ WOLA÷Σw² + 反射尾帧（输出长度约定 (N//hop)·hop 与参考一致）；机理修正见 round-3 §6 |
+| SG-4 MDX parity | audio-separator 官方管线 vs vocalseparator（PAR-MD，边界=反射填充） | **round-3 收敛全绿 8/8**：机器精度 −107.6~−145.4dB corr 1.000000。三重归因（normalize 工作点/×peak 域/块级 OLA+块尾 reflect）→ 判据同工作点（gen_golden mdx 旁路+域重建）→ 引擎块级化复刻官方分块（step=195840/块内 reflect/hanning OLA+divider，环形 3MB 有界） |
 | SG-5 变调性质 | pitch(+n)∘pitch(−n) 往返恒等 + 长度一致（PAR-PT，无独立参考） | round-1 全绿（谱判据） |
-| SG-6 接入 CI | parity 套件并入 ci-smoke.sh（依赖 venv 存在时跑）+ 依赖版本锁依赖矩阵 | 待做（依赖 SG-3/4 收敛） |
+| SG-6 接入 CI | parity 套件并入 ci-smoke.sh（依赖 venv 存在时跑）+ 依赖版本锁依赖矩阵 | 待做（SG-3/4 round-3 已双双收敛，闸门解除，下一轮执行） |
 
 FFT 性质五件套（FFT-PR）已在 WP-1.3 落地并入 ci-smoke，不重复建。分块不变性照妖镜已在 WP-1.2 并入 ci-smoke（五引擎），不重复。
 
@@ -37,4 +37,11 @@ FFT 性质五件套（FFT-PR）已在 WP-1.3 落地并入 ci-smoke，不重复�
 - **MDX 参考幅度约定（round-2 实锤）**：参考输出=模型输出×s×peak（s=0.9/peak 当 peak>0.9 否则 1），三素材拟合增益与理论全吻合；parity 判据须去增益（compare.py --fit-scale）。
 - **MDX 纯音泄漏差 23dB（round-2 新引擎嫌疑）**：sine1k 下 DUT voc 泄漏 0.233 vs 参考 0.017，宽带却 corr 0.97——指向引擎前端谱构（dimF 截取/高频重建/前 3 bin 置零），round-3 判别实验归因后决定是否立债（与 GTCRN 两债一并处置）。
 - odd 素材（0.165s）触发引擎最短 ~0.17s 契约，MDX 边界用例换 odd1s（≈1s 非整 hop）。
+- **MDX 判据同工作点（round-3 决策）**：参考两处幅度约定（前置 normalize 峰值>0.9 工作点偏移、输出 ×peak 纯增益）是产品策略非引擎语义，金样本侧旁路+代数除回（gen_golden.py mdx，域重建自洽校验 3e-8）；--fit-scale 降级为纯校验（a 恒 1.0000）。
+- **MDX 引擎块级化（round-3 决策）**：parity 达标须复刻官方 demix 分块语义（全局网格在块重叠区数学上不等价，判别实验：段A 机器精度/段B −0.1dB 分界在块1起点 x=192000）。输出延迟增至 ~2 块（块级 OLA 固有），流式/内存契约不变（环形 3MB、flush 补零 ≤2C）。
+- 块级化实现备注：块内合成必须 padded 域整块 WOLA+裁 [trim,trim+C)（istft center 语义）——「每帧排 kHop」流式网格帧贡献差半窗且 dimT·kHop=C+kHop≠C（ASan 越界实锤后重写）。
+- **GTCRN 输出长度约定变更（round-3）**：修复后引擎输出 = (N//hop)·hop（参考 sherpa OfflineSpeechDenoiser 同款，golden 逐字节对齐的前提），5s 素材少 8ms 尾段；ci-smoke w3 断言已按此改为区间断言（其余 w* 仍精确断言）。**开放产品决策**：离线产品若要输出与源等长（视频音轨回贴防漂移），应在 FFTranscoder 层补尾零——动 fftranscoder.cpp 全引擎共层，不随 parity 轮擅改，FR-24 无头命令层/实时化前拍板。
+- **GTCRN 两债机理修正（round-3 子代理实锤）**：债②主因不是首尾窗分母欠补偿（发射区 Σw² 恒=1），而是旧引擎缺反射尾帧（参考对最后样本镜像补帧）；分母补偿保留（istft 语义正确且零成本）。参考语义锁定：center 网格 + 双侧 reflect + WOLA÷Σw² + 裁头，帧数 = N//hop+1，python 离线复刻 vs golden −153.0dB（float64 机器精度）。
+- **子代理对抗式审查闭环（round-3）**：3 维度 × 验证共 11 代理，0 confirmed / 3 killed / 1 uncertain——该 P1（runModel 失败后 specCount 残留致越界写）针对 round-3a 旧代码，块级化已删 specCount 成员；主线程在最终代码上复核失败-重试路径幂等安全（失败发生在谱累计之前，环形仅零扩展），判定失效关闭。
+- GTCRN 规格防护收紧（主线程审查发现）：setup 约束由 hop≥winLen/2 收紧为 hop==winLen/2——feedPending 的 need=winLen−half 与 slideAnalysis 每步吃 hop 仅在等式下一致，否则假想导出会越界读 pending；GTCRN 导出恒为该规格。
 

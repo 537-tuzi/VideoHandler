@@ -7,8 +7,9 @@
                             差异量级正是本组用例要量的）
   gtcrn <素材名...>         sherpa-onnx 同模型 speech-enhancement（装好后启用）
   mdx  <素材名...>          audio-separator 0.47.0 官方管线（UVR-MDX-NET-Voc_FT，torch cpu），
-                            拦截 write_audio 抓模型原始输出（绕开 pydub/ffmpeg FLOAT 导出坑与
-                            归一化），每次产 mdx-voc / mdx-inst 两金样本
+                            拦截 write_audio 抓模型原始输出；同时旁路前置 normalize（peak>0.9
+                            工作点偏移非引擎差异）并把 ×peak 增益除回引擎域，每次产
+                            mdx-voc / mdx-inst 两金样本（round-3 判据）
 用法：gen_golden.py <子命令> <素材名...> [--check]；素材须先由 gen_inputs.py 生成。
 依赖：test/pydeps 定向安装（绕 diffq：py3.14 无 wheel 且 MDX 路径不用它），见 requirements.txt。
 """
@@ -76,13 +77,20 @@ def do_mdx(names):
     logging.disable(logging.WARNING)
     from audio_separator.separator import Separator
     from audio_separator.separator.common_separator import CommonSeparator
+    from audio_separator.separator.uvr_lib_v5 import spec_utils
 
     # 拦截写盘抓模型原始输出：免 pydub FLOAT→ffmpeg '-f float' 坑，也免 soundfile 路径的
     # normalize——DUT 侧引擎不归一化，对等比较须取未归一化值
     caps = []
 
     def capture(self, stem_path, stem_source):
-        caps.append((stem_path, stem_source))
+        caps.append((stem_path, stem_source, self.compensate))
+
+    # 旁路参考前置 normalize（peak>0.9 时 mix×0.9/peak）：非线性模型下 demix(s·x)≠s·demix(x)，
+    # 工作点偏移不是引擎实现差异，对等比较须同工作点（round-3 实锤：唯一 peak<0.9 的 odd1s
+    # 机器精度一致，其余素材残差与重叠区无关、段A 也差、sine1k 拟合增益恰 0.5=0.9/1.8 级）
+    orig_norm = spec_utils.normalize
+    spec_utils.normalize = lambda wave, max_peak, min_peak: wave
 
     orig = CommonSeparator.write_audio
     CommonSeparator.write_audio = capture
@@ -93,11 +101,29 @@ def do_mdx(names):
             caps.clear()
             sep.separate(str(OUT / f'{name}.wav'))
             assert len(caps) == 2, f'{name}: 期望双 stem，实得 {len(caps)}'
-            for path, src in caps:
-                stem = 'mdx-voc' if '(Vocals)' in path else 'mdx-inst'
-                save_golden(name, stem, np.asarray(src))
+            x = np.fromfile(OUT / f'{name}.f32', dtype='<f4').reshape(-1, 2)
+            peak = float(np.abs(x).max())
+            # 注意写盘顺序：secondary 先写、primary 后写（mdx_separator separate 尾段），
+            # 按 path 名判别数组角色，勿按捕获顺序
+            comp = caps[0][2]
+            byname = {'mdx-voc' if '(Vocals)' in p else 'mdx-inst': s for p, s, _ in caps}
+            voc = np.asarray(byname['mdx-voc'], dtype=np.float64)
+            inst = np.asarray(byname['mdx-inst'], dtype=np.float64)
+            # 域重建：参考输出 primary=demix(x)·peak、secondary=x−c·demix(x)·peak（×peak 是
+            # 产品级幅度策略非引擎语义）；除回 peak 得引擎域。inst 用代数式
+            # secondary + c·(primary − primary/peak) = x − c·demix(x)
+            voc_true = voc / peak
+            inst_true = inst + comp * (voc - voc / peak)
+            # 交叉校验：直接 x − c·voc_true 重算，两条代数路径应一致
+            cross = x - comp * voc_true
+            d = float(np.abs(inst_true - cross[:len(inst_true)]).max())
+            print(f'{name}: peak={peak:.4f} compensate={comp} 域重建交叉校验 max|d|={d:.3e}')
+            assert d < 1e-6, f'{name}: inst 域重建自洽失败 {d}'
+            save_golden(name, 'mdx-voc', voc_true)
+            save_golden(name, 'mdx-inst', inst_true)
     finally:
         CommonSeparator.write_audio = orig
+        spec_utils.normalize = orig_norm
 
 
 def main():

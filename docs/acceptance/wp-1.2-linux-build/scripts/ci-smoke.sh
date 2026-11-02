@@ -57,11 +57,20 @@ echo "== CLI 冒烟（7 动词）=="
 "$VH" --extract-audio     "$WORK/tiny.mp4" >/dev/null
 "$VH" --extract-video     "$WORK/tiny.mp4" >/dev/null
 
-echo "== ffprobe 体检（w1–w6 = pcm_f32le/44100/2ch/${DUR}s）=="
+echo "== ffprobe 体检（w1–w6 = pcm_f32le/44100/2ch；时长 w1/2/4/5/6=${DUR}s，w3 按引擎约定）=="
+# w3（AI 降噪）输出长度 = 引擎参考约定 (N//hop)·hop（5s@16k→79872 样本≈4.992s，sherpa
+# OfflineSpeechDenoiser 同款；WP-1.1 round-3 起），比源短不足一 hop 的尾段——区间断言容
+# ffprobe 容器时长取整；其余路径与源恒等长，保持精确断言
 for i in 1 2 3 4 5 6; do
     spec=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name,sample_rate,channels -of csv=p=0 "$WORK/w$i.wav")
     dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$WORK/w$i.wav")
-    [ "$spec" = "pcm_f32le,44100,2" ] && [ "$dur" = "${DUR}.000000" ] || { echo "  体检 FAIL: w$i.wav -> $spec / $dur"; exit 1; }
+    if [ "$i" = 3 ]; then
+        [ "$spec" = "pcm_f32le,44100,2" ] && awk -v d="$dur" -v s="$DUR" \
+            'BEGIN{e=int(s*16000/256)*256/16000; exit !(d>=e-0.01 && d<=s+0.001)}' \
+            || { echo "  体检 FAIL: w$i.wav -> $spec / $dur（期望 (N//hop)*hop ≈4.992s@s=5）"; exit 1; }
+    else
+        [ "$spec" = "pcm_f32le,44100,2" ] && [ "$dur" = "${DUR}.000000" ] || { echo "  体检 FAIL: w$i.wav -> $spec / $dur"; exit 1; }
+    fi
 done
 echo "  体检 PASS"
 echo "== ci-smoke 全绿 =="
