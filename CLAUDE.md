@@ -36,7 +36,8 @@ VideoHandler — Qt6 Widgets + FFmpeg + ONNX Runtime 的音频处理桌面软件
 main.cpp            CLI 分支（argc>=3）或 GUI；GUI 为组合根（MediaService 注入 MainWidget）
 view/mainwidget     唯一窗口；信号槽转发
 service/mediaservice QThread worker 调度 + busy 锁 + 取消原子量（一次一任务）
-service/commandlayer FR-24 无头命令层：execute(QJsonObject,Ctx)→QJsonObject 纯函数（8 处理器/9 动词形态 + 严格校验 + 六类错误码 E_*）；--json 走 stdin/stdout 单 JSON 文档；旧 7 动词是其薄壳；注册表（NFR-M1）的宿主与缝
+service/commandlayer FR-24 无头命令层：execute(QJsonObject,Ctx)→QJsonObject 纯函数（严格校验 + 六类错误码 E_*）；--json 走 stdin/stdout 单 JSON 文档；旧 7 动词是其薄壳；分发=双查表（NFR-M1 片 A：engineregistry 引擎表 → 内置 probe/extract 小表 → 未命中 E_PARAMS）
+service/engineregistry NFR-M1 引擎注册表：转码族 5 动词自描述条目（ParamSpec 校验 schema/工厂闭包吞 setup 异构/setupErrorClass/lockCanonical/后缀），validateParams 是引擎参数校验消息的唯一权威（信封字段模板仍在 commandlayer；与旧处理器逐字兼容）；新增引擎=新 .h/.cpp+表条目+CMake 两行，命令层/GUI/服务层零改（错误分类仍前缀匹配，片 B 换 ErrInfo 结构化通道）
 service/ffextractor  提取/探测静态核心（probeInfo/extract*）供命令层复用；GUI worker 槽为壳——组 JSON 请求走 CommandLayer::execute（FR-24 片 D），GUI 文案逐字不变
 service/fftranscoder 唯一转码通路：解码 → swr 到引擎规格 → 引擎 → swr 回源规格（跟随源）→ WAV(f32)
 service/ 引擎        全部实现 IStreamEngine { inRate / inChannels / process / flush }

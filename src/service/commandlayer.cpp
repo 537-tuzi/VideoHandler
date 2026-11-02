@@ -1,22 +1,24 @@
 #include "commandlayer.h"
 
-#include "aidenoiser.h"
-#include "dspdenoiser.h"
+#include "engineregistry.h"
 #include "ffextractor.h"
 #include "fftranscoder.h"
-#include "pitchshifter.h"
-#include "vocalseparator.h"
+#include "streamengine.h"
 #include "model/data.h"
 
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QList>
 #include <QStringList>
 
 #include <algorithm>
 #include <exception>
+#include <memory>
 
 namespace CommandLayer {
 namespace {
+
+using EngineRegistry::EngineEntry;// 注册表条目（本文件多处引用，收窄前缀）
 
 // ---- 错误码常量（D3 六类；字面量即对外合同）----
 constexpr auto kErrParams    = "E_PARAMS";
@@ -76,25 +78,17 @@ QString requireString(const QJsonObject& req, const char* key, QString* out) {
 
 QString reqCmd(const QJsonObject& req) { return req.value(QStringLiteral("cmd")).toString(); }
 
-// 动词允许的专有字段（信封 v/cmd/input/output 之外）；probe 无 output（探测无落盘语义）
-QStringList verbFields(const QString& cmd) {
-    if (cmd == QStringLiteral("denoise")) return {QStringLiteral("humBase"), QStringLiteral("wind")};
-    if (cmd == QStringLiteral("aiDenoise")) return {QStringLiteral("model")};
-    if (cmd == QStringLiteral("pitch")) return {QStringLiteral("semi")};
-    if (cmd == QStringLiteral("separate")) return {QStringLiteral("model"), QStringLiteral("stem")};
-    return {};
-}
-
-bool verbAllowsOutput(const QString& cmd) { return cmd != QStringLiteral("probe"); }
+// 动词允许的专有字段白名单由条目供给（EngineRegistry::isDeclaredParam，spec D2 硬约束 1）；
+// probe 无 output（探测无落盘语义，见内置动词表）
 
 // ---- 输出路径决策（spec §5.3 工作区缝：显式 output 优先，缺省走源目录后缀规则；
 // 工作区包替换此函数即可接管全部转码族动词的落盘位置。extract 族缺省名依赖源流编解码器，
 // 由底座 extractAudio/extractVideo 内部同一规则兜底——传空 outPath 即自动命名）----
-QString outputOr(const QJsonObject& req, const char* suffix) {
+QString outputOr(const QJsonObject& req, const QString& suffix) {
     const QJsonValue o = req.value(QStringLiteral("output"));
     if (o.isString() && !o.toString().isEmpty()) return o.toString();
     const QFileInfo fi(req.value(QStringLiteral("input")).toString());
-    return fi.absolutePath() + "/" + fi.completeBaseName() + QLatin1String(suffix) + ".wav";
+    return fi.absolutePath() + "/" + fi.completeBaseName() + suffix + QStringLiteral(".wav");
 }
 
 // ---- result 组装（D4：输出规格可观测——P0 #4 行为进合同）----
@@ -167,91 +161,31 @@ QJsonObject cmdProbe(const QJsonObject& req, const Ctx&) {
     return okResponse(reqCmd(req), result);
 }
 
-QJsonObject cmdTranscode(const QJsonObject& req, const Ctx& ctx) {
+// ---- 引擎路径通用段（条目驱动：校验 → 语义 → 模型存在性 → 工厂 → 转码收尾）----
+// 信封校验已在 execute 完成；lockCanonical 与缺省后缀由条目供给，五转码族动词共用（NFR-M1）
+QJsonObject runEngine(const EngineEntry& entry, const QJsonObject& req, const Ctx& ctx) {
+    const QString& cmd = entry.id;
+    QJsonObject args;// 补缺省后的参数副本（defStr 单源）
+    const QString verr = EngineRegistry::validateParams(entry, req, &args);
+    if (!verr.isEmpty()) return errorResponse(cmd, kErrParams, verr);
+    if (entry.semanticCheck) {
+        const QString serr = entry.semanticCheck(args);
+        if (!serr.isEmpty()) return errorResponse(cmd, kErrParams, serr);
+    }
+    if (entry.requiresModel) {
+        const QString model = args.value(QStringLiteral("model")).toString();
+        if (!QFileInfo::exists(model))
+            return errorResponse(cmd, kErrModel, QStringLiteral("找不到模型 %1").arg(model));
+    }
     int rate = 0, channels = 0;
     FFTranscoder::probeSourceSpec(req.value(QStringLiteral("input")).toString(), &rate, &channels);// 工作点跟随源
-    DspDenoiser passthrough;
-    passthrough.setup(rate, channels, HumBase::Off, false);// 无滤波即直通
-    return runTranscode(req, ctx, passthrough, outputOr(req, kSuffixTranscoded), false);
-}
-
-QJsonObject cmdDenoise(const QJsonObject& req, const Ctx& ctx) {
-    const QString cmd = reqCmd(req);
-    HumBase humBase = HumBase::Hz50;// 缺省 50Hz（对齐旧 CLI/GUI 缺省）
-    const QJsonValue hb = req.value(QStringLiteral("humBase"));
-    if (!hb.isUndefined()) {
-        if (!hb.isString()) return errorResponse(cmd, kErrParams, QStringLiteral("humBase 必须是字符串"));
-        const QString s = hb.toString();
-        if (s == QLatin1String("50")) humBase = HumBase::Hz50;
-        else if (s == QLatin1String("60")) humBase = HumBase::Hz60;
-        else if (s == QLatin1String("off")) humBase = HumBase::Off;
-        else return errorResponse(cmd, kErrParams, QStringLiteral("humBase 只接受 50、60 或 off"));
+    QString createErr;
+    std::unique_ptr<IStreamEngine> engine = entry.create(args, rate, channels, &createErr);
+    if (!engine) {// setup 失败按条目归类（E_MODEL/E_ENGINE）；create 永不失败的条目（nullptr）落此为编程错误——断言拦开发期，E_ENGINE 兜底防空指针 UB
+        Q_ASSERT(entry.setupErrorClass);
+        return errorResponse(cmd, entry.setupErrorClass ? entry.setupErrorClass : kErrEngine, createErr);
     }
-    bool wind = true;
-    const QJsonValue w = req.value(QStringLiteral("wind"));
-    if (!w.isUndefined()) {
-        if (!w.isBool()) return errorResponse(cmd, kErrParams, QStringLiteral("wind 必须是布尔值"));
-        wind = w.toBool();
-    }
-    if (humBase == HumBase::Off && !wind)// 与 GUI 拒绝逻辑一致（mainwidget.cpp doDenoiseWav）
-        return errorResponse(cmd, kErrParams, QStringLiteral("humBase 为 off 且 wind 为 false：没有可执行的降噪项"));
-    int rate = 0, channels = 0;
-    FFTranscoder::probeSourceSpec(req.value(QStringLiteral("input")).toString(), &rate, &channels);// 工作点跟随源
-    DspDenoiser denoiser;
-    denoiser.setup(rate, channels, humBase, wind);
-    return runTranscode(req, ctx, denoiser, outputOr(req, kSuffixDenoised), false);
-}
-
-QJsonObject cmdAiDenoise(const QJsonObject& req, const Ctx& ctx) {
-    const QString cmd = reqCmd(req);
-    QString model;
-    const QString perr = requireString(req, "model", &model);
-    if (!perr.isEmpty()) return errorResponse(cmd, kErrParams, perr);
-    if (!QFileInfo::exists(model))
-        return errorResponse(cmd, kErrModel, QStringLiteral("找不到模型 %1").arg(model));
-    AiDenoiser ai;
-    QString setupErr;
-    if (!ai.setup(model, &setupErr)) return errorResponse(cmd, kErrModel, setupErr);
-    return runTranscode(req, ctx, ai, outputOr(req, kSuffixAi), true);
-}
-
-QJsonObject cmdPitch(const QJsonObject& req, const Ctx& ctx) {
-    const QString cmd = reqCmd(req);
-    const QJsonValue sv = req.value(QStringLiteral("semi"));
-    if (!sv.isDouble()) return errorResponse(cmd, kErrParams, QStringLiteral("semi 必须是数字"));
-    const double semi = sv.toDouble();
-    if (!(semi >= -12.0 && semi <= 12.0))// 范围对齐 GUI（mainwidget spinSemi [-12,12]）；否定式使 NaN 落拒收（审查 P2-1）
-        return errorResponse(cmd, kErrParams, QStringLiteral("semi 须在 [-12, 12] 内"));
-    if (qFuzzyIsNull(semi)) return errorResponse(cmd, kErrParams, QStringLiteral("semi 不能为 0"));// 对齐 GUI 拒绝逻辑
-    int rate = 0, channels = 0;
-    FFTranscoder::probeSourceSpec(req.value(QStringLiteral("input")).toString(), &rate, &channels);// 工作点跟随源
-    PitchShifter shifter;
-    QString setupErr;
-    if (!shifter.setup(rate, channels, semi, &setupErr)) return errorResponse(cmd, kErrEngine, setupErr);
-    return runTranscode(req, ctx, shifter, outputOr(req, kSuffixPitch), false);
-}
-
-QJsonObject cmdSeparate(const QJsonObject& req, const Ctx& ctx) {
-    const QString cmd = reqCmd(req);
-    QString model;
-    const QString perr = requireString(req, "model", &model);
-    if (!perr.isEmpty()) return errorResponse(cmd, kErrParams, perr);
-    bool instrumental = false;// stem 缺省 vocals
-    const QJsonValue st = req.value(QStringLiteral("stem"));
-    if (!st.isUndefined()) {
-        if (!st.isString()) return errorResponse(cmd, kErrParams, QStringLiteral("stem 必须是字符串"));
-        const QString s = st.toString();
-        if (s == QLatin1String("vocals")) instrumental = false;
-        else if (s == QLatin1String("instrumental")) instrumental = true;
-        else return errorResponse(cmd, kErrParams, QStringLiteral("stem 只接受 vocals 或 instrumental"));
-    }
-    if (!QFileInfo::exists(model))
-        return errorResponse(cmd, kErrModel, QStringLiteral("找不到模型 %1").arg(model));
-    VocalSeparator sep;
-    sep.setInstrumental(instrumental);
-    QString setupErr;
-    if (!sep.setup(model, &setupErr)) return errorResponse(cmd, kErrModel, setupErr);
-    return runTranscode(req, ctx, sep, outputOr(req, instrumental ? kSuffixInstrumental : kSuffixVocals), true);
+    return runTranscode(req, ctx, *engine, outputOr(req, entry.outputSuffix(args)), entry.lockCanonicalOutput);
 }
 
 // 显式 output（extract 族缺省命名依赖源流编解码器，由底座内部规则决定——此处只取显式值）
@@ -278,6 +212,23 @@ QJsonObject cmdExtractVideo(const QJsonObject& req, const Ctx& ctx) {
     QJsonObject result;
     result.insert(QStringLiteral("output"), out);
     return okResponse(reqCmd(req), result);
+}
+
+// ---- 内置动词表（probe/extract 族：非引擎——探测与流复制，无 IStreamEngine 参与、无引擎参数、
+// 错误分类独立；保留专有处理器，spec D3。与引擎注册表并列成 execute 的双查表）----
+struct BuiltinVerb {
+    const char* id;
+    QJsonObject (*handler)(const QJsonObject&, const Ctx&);
+    bool allowsOutput;// probe 探测无落盘语义，拒收 output
+};
+
+const QList<BuiltinVerb>& builtinVerbs() {
+    static const QList<BuiltinVerb> verbs = {
+        {"probe", cmdProbe, false},
+        {"extractAudio", cmdExtractAudio, true},
+        {"extractVideo", cmdExtractVideo, true},
+    };
+    return verbs;
 }
 
 }// namespace
@@ -310,25 +261,27 @@ QJsonObject execute(const QJsonObject& request, const Ctx& ctx) {
         const QJsonValue cmdV = request.value(QStringLiteral("cmd"));
         if (!cmdV.isString()) return errorResponse({}, kErrParams, QStringLiteral("cmd 缺失或不是字符串"));
         cmd = cmdV.toString();
-        static const QStringList kVerbs = {
-            QStringLiteral("probe"),    QStringLiteral("transcode"), QStringLiteral("denoise"),
-            QStringLiteral("aiDenoise"), QStringLiteral("pitch"),     QStringLiteral("separate"),
-            QStringLiteral("extractAudio"), QStringLiteral("extractVideo"),
-        };
-        if (!kVerbs.contains(cmd))
+        // —— 双查表：引擎注册表（转码族 5 动词）→ 内置表（probe/extract 族 3 动词）→ 未命中 E_PARAMS ——
+        const EngineEntry* entry = nullptr;
+        for (const EngineEntry& e : EngineRegistry::engineTable())
+            if (e.id == cmd) { entry = &e; break; }
+        const BuiltinVerb* builtin = nullptr;
+        if (!entry)
+            for (const BuiltinVerb& b : builtinVerbs())
+                if (cmd == QLatin1String(b.id)) { builtin = &b; break; }
+        if (!entry && !builtin)
             return errorResponse({}, kErrParams, QStringLiteral("未知命令：%1").arg(cmd));
         if (request.contains(QStringLiteral("v"))) {
             const QJsonValue v = request.value(QStringLiteral("v"));
             if (!v.isDouble() || v.toInt() != 1)
                 return errorResponse(cmd, kErrParams, QStringLiteral("v 仅支持 1"));
         }
-        // —— 未知字段拒收（动词级白名单；QJsonObject 键序确定 → 报错确定性）——
-        const QStringList extra = verbFields(cmd);
-        const bool allowsOutput = verbAllowsOutput(cmd);
+        // —— 未知字段拒收（动词级白名单由条目/内置表供给；QJsonObject 键序确定 → 报错确定性）——
+        const bool allowsOutput = entry ? true : builtin->allowsOutput;
         for (const QString& key : request.keys()) {
             if (key == QLatin1String("v") || key == QLatin1String("cmd") || key == QLatin1String("input")) continue;
             if (key == QLatin1String("output") && allowsOutput) continue;
-            if (extra.contains(key)) continue;
+            if (entry && EngineRegistry::isDeclaredParam(*entry, key)) continue;
             return errorResponse(cmd, kErrParams, QStringLiteral("未知字段：%1").arg(key));
         }
         // —— 公共字段：input 必填；output（若允许）非空 + 原件只读防线（FR-A4 根基）——
@@ -342,15 +295,9 @@ QJsonObject execute(const QJsonObject& request, const Ctx& ctx) {
             if (QFileInfo(o.toString()).absoluteFilePath() == QFileInfo(input).absoluteFilePath())
                 return errorResponse(cmd, kErrParams, QStringLiteral("output 不能与 input 相同（原件只读）"));
         }
-        // —— 分发（if/else 链；NFR-M1 注册表缝）——
-        if (cmd == QStringLiteral("probe")) return cmdProbe(request, ctx);
-        if (cmd == QStringLiteral("transcode")) return cmdTranscode(request, ctx);
-        if (cmd == QStringLiteral("denoise")) return cmdDenoise(request, ctx);
-        if (cmd == QStringLiteral("aiDenoise")) return cmdAiDenoise(request, ctx);
-        if (cmd == QStringLiteral("pitch")) return cmdPitch(request, ctx);
-        if (cmd == QStringLiteral("separate")) return cmdSeparate(request, ctx);
-        if (cmd == QStringLiteral("extractAudio")) return cmdExtractAudio(request, ctx);
-        return cmdExtractVideo(request, ctx);
+        // —— 分发：引擎条目走通用路径，内置动词走专有处理器（if/else 链与 kVerbs/verbFields 已退役）——
+        if (entry) return runEngine(*entry, request, ctx);
+        return builtin->handler(request, ctx);
     } catch (const std::exception& e) {// 异常屏障：引擎契约不得抛出，命令层自兜底（D3 E_INTERNAL）
         return errorResponse(cmd, kErrInternal, QStringLiteral("内部异常：%1").arg(QString::fromUtf8(e.what())));
     } catch (...) {
