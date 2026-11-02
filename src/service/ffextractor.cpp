@@ -127,54 +127,93 @@ void FFExtractor::setCancelFlag(std::atomic<bool>* flag) {
     cancelFlag = flag;
 }
 
-bool FFExtractor::probe(const QString& inPath, QString* info) {
+bool FFExtractor::probeInfo(const QString& inPath, ProbeInfo* info, QString* err) {
     AVFormatContext* in = nullptr;
     int ret = avformat_open_input(&in, inPath.toUtf8().constData(), nullptr, nullptr);
     if (ret < 0) {
-        if (info) *info = QStringLiteral("打不开文件：%1").arg(ff_err(ret));
+        if (err) *err = QStringLiteral("打不开文件：%1").arg(ff_err(ret));
         return false;
     }
     avformat_find_stream_info(in, nullptr);// 探测失败不拦，能报多少报多少
+    if (info) {
+        info->container = QString::fromUtf8(in->iformat->long_name);
+        info->sizeBytes = QFileInfo(inPath).size();
+        info->durationUs = in->duration;
+        info->streams.clear();
+        for (unsigned i = 0; i < in->nb_streams; ++i) {
+            const AVCodecParameters* par = in->streams[i]->codecpar;
+            ProbeStream s;
+            s.index = static_cast<int>(i);
+            s.mediaType = par->codec_type == AVMEDIA_TYPE_VIDEO ? QStringLiteral("video")
+                        : par->codec_type == AVMEDIA_TYPE_AUDIO ? QStringLiteral("audio")
+                                                                : QStringLiteral("other");
+            s.codec = QString::fromUtf8(avcodec_get_name(par->codec_id));
+            if (par->codec_type == AVMEDIA_TYPE_VIDEO) {
+                s.width = par->width;
+                s.height = par->height;
+            }
+            if (par->codec_type == AVMEDIA_TYPE_AUDIO) {
+                s.sampleRate = par->sample_rate;
+                s.channels = par->ch_layout.nb_channels;
+            }
+            info->streams.append(s);
+        }
+    }
+    avformat_close_input(&in);
+    return true;
+}
+
+QString FFExtractor::probeText(const ProbeInfo& info) {
     QStringList lines;
-    lines << QStringLiteral("容器：%1").arg(QString::fromUtf8(in->iformat->long_name));
-    lines << QStringLiteral("大小：%1 MB").arg(QFileInfo(inPath).size() / 1048576.0, 0, 'f', 2);
-    if (in->duration > 0) {
-        int sec = static_cast<int>(in->duration / AV_TIME_BASE);
+    lines << QStringLiteral("容器：%1").arg(info.container);
+    lines << QStringLiteral("大小：%1 MB").arg(info.sizeBytes / 1048576.0, 0, 'f', 2);
+    if (info.durationUs > 0) {
+        int sec = static_cast<int>(info.durationUs / AV_TIME_BASE);
         lines << QStringLiteral("时长：%1:%2:%3").arg(sec / 3600, 2, 10, QChar('0'))
                                             .arg(sec / 60 % 60, 2, 10, QChar('0'))
                                             .arg(sec % 60, 2, 10, QChar('0'));
     }
-    for (unsigned i = 0; i < in->nb_streams; ++i) {
-        const AVCodecParameters* par = in->streams[i]->codecpar;
-        QString kind = par->codec_type == AVMEDIA_TYPE_VIDEO ? QStringLiteral("视频")
-                     : par->codec_type == AVMEDIA_TYPE_AUDIO ? QStringLiteral("音频")
-                                                             : QStringLiteral("其他");
-        QString line = QStringLiteral("流#%1：%2 %3").arg(i).arg(kind, QString::fromUtf8(avcodec_get_name(par->codec_id)));
-        if (par->codec_type == AVMEDIA_TYPE_VIDEO)
-            line += QStringLiteral(" %1x%2").arg(par->width).arg(par->height);
-        if (par->codec_type == AVMEDIA_TYPE_AUDIO)
-            line += QStringLiteral(" %1Hz %2声道").arg(par->sample_rate).arg(par->ch_layout.nb_channels);
+    for (const ProbeStream& s : info.streams) {
+        QString kind = s.mediaType == QStringLiteral("video") ? QStringLiteral("视频")
+                     : s.mediaType == QStringLiteral("audio") ? QStringLiteral("音频")
+                                                              : QStringLiteral("其他");
+        QString line = QStringLiteral("流#%1：%2 %3").arg(s.index).arg(kind, s.codec);
+        if (s.mediaType == QStringLiteral("video"))
+            line += QStringLiteral(" %1x%2").arg(s.width).arg(s.height);
+        if (s.mediaType == QStringLiteral("audio"))
+            line += QStringLiteral(" %1Hz %2声道").arg(s.sampleRate).arg(s.channels);
         lines << line;
     }
-    avformat_close_input(&in);
-    if (info) *info = lines.join(QLatin1Char('\n'));
+    return lines.join(QLatin1Char('\n'));
+}
+
+bool FFExtractor::probe(const QString& inPath, QString* info) {
+    ProbeInfo pi;
+    QString err;
+    if (!probeInfo(inPath, &pi, &err)) {
+        if (info) *info = err;
+        return false;
+    }
+    if (info) *info = probeText(pi);
     return true;
 }
 
 QString FFExtractor::extractAudio(const QString& inPath, QString* err, const std::function<void(int)>& onProgress,
-                                  const std::atomic<bool>* cancel) {
+                                  const std::atomic<bool>* cancel, const QString& outPath) {
     QString e;
     AVFormatContext* in = nullptr;
     AVFormatContext* out = nullptr;
-    QString outPath;
+    QString path;
     int idx = -1;
 
     do {
         e = open_input(inPath, &in, AVMEDIA_TYPE_AUDIO, &idx);
         if (!e.isEmpty()) break;
         QFileInfo fi(inPath);
-        outPath = fi.absolutePath() + "/" + fi.completeBaseName() + kSuffixAudio + audio_ext(in->streams[idx]->codecpar->codec_id);
-        e = open_output(&out, outPath);
+        // 显式路径在输入成功打开后才落位：失败路径绝不误删既有文件
+        if (!outPath.isEmpty()) path = outPath;
+        else path = fi.absolutePath() + "/" + fi.completeBaseName() + kSuffixAudio + audio_ext(in->streams[idx]->codecpar->codec_id);
+        e = open_output(&out, path);
         if (!e.isEmpty()) break;
         e = write_header(in, out, idx);
         if (!e.isEmpty()) break;
@@ -184,23 +223,25 @@ QString FFExtractor::extractAudio(const QString& inPath, QString* err, const std
         if (ret < 0) e = QStringLiteral("写文件尾失败：%1").arg(ff_err(ret));
     } while (false);
 
-    return finish(e, &out, &in, &outPath, err);
+    return finish(e, &out, &in, &path, err);
 }
 
 QString FFExtractor::extractVideo(const QString& inPath, QString* err, const std::function<void(int)>& onProgress,
-                                  const std::atomic<bool>* cancel) {
+                                  const std::atomic<bool>* cancel, const QString& outPath) {
     QString e;
     AVFormatContext* in = nullptr;
     AVFormatContext* out = nullptr;
-    QString outPath;
+    QString path;
     int idx = -1;
 
     do {
         e = open_input(inPath, &in, AVMEDIA_TYPE_VIDEO, &idx);
         if (!e.isEmpty()) break;
         QFileInfo fi(inPath);
-        outPath = fi.absolutePath() + "/" + fi.completeBaseName() + kSuffixMute + "." + fi.suffix();
-        e = open_output(&out, outPath);
+        // 显式路径在输入成功打开后才落位：失败路径绝不误删既有文件
+        if (!outPath.isEmpty()) path = outPath;
+        else path = fi.absolutePath() + "/" + fi.completeBaseName() + kSuffixMute + "." + fi.suffix();
+        e = open_output(&out, path);
         if (!e.isEmpty()) break;
         e = write_header(in, out, idx);
         if (!e.isEmpty()) break;
@@ -210,7 +251,7 @@ QString FFExtractor::extractVideo(const QString& inPath, QString* err, const std
         if (ret < 0) e = QStringLiteral("写文件尾失败：%1").arg(ff_err(ret));
     } while (false);
 
-    return finish(e, &out, &in, &outPath, err);
+    return finish(e, &out, &in, &path, err);
 }
 
 void FFExtractor::doProbe(const QString& inPath) {

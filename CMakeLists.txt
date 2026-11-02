@@ -14,6 +14,8 @@ find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
 add_library(engine STATIC
     src/service/aidenoiser.h
     src/service/aidenoiser.cpp
+    src/service/commandlayer.h
+    src/service/commandlayer.cpp
     src/service/dspdenoiser.h
     src/service/dspdenoiser.cpp
     src/service/ffextractor.h

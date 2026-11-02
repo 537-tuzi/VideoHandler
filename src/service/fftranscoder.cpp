@@ -131,7 +131,7 @@ void FFTranscoder::probeSourceSpec(const QString& inPath, int* rate, int* channe
 QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& outPath,
                                          IStreamEngine& engine, const std::atomic<bool>* cancel,
                                          QString* err, const ProgressFn& onProgress,
-                                         int outRate, int outChannels) {
+                                         int outRate, int outChannels, OutInfo* outInfo) {
     QString e;
     AVFormatContext* in = nullptr;
     AVCodecContext* dec = nullptr;
@@ -139,6 +139,7 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
     SwrContext* toAi = nullptr;// 输入 → 引擎期望规格
     SwrContext* toOut = nullptr;// 引擎输出 → 输出规格（规格已一致时省去）
     int idx = -1;
+    int srcRate = 0, srcChannels = 0;// 解码上下文的源规格（D4 真值，供成功收尾回填）
     int64_t samplePos = 0;
     const int ch = engine.inChannels();
     bool bypassOut = false;
@@ -146,6 +147,8 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
     do {
         e = open_decoder(inPath, &in, &dec, &idx);
         if (!e.isEmpty()) break;
+        srcRate = dec->sample_rate;
+        srcChannels = dec->ch_layout.nb_channels;
         // 输出规格：未指定（0）时跟随解码出的源（限幅 8k–192k、声道 min(源,2)）；
         // 显式指定值经同一规整后原样通过（AI/分离路径传兜底规格，工作点不动）
         normalizeOutSpec(outRate > 0 ? outRate : dec->sample_rate,
@@ -318,7 +321,14 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
     if (!e.isEmpty()) {
         QFile::remove(outPath);
         if (err) *err = e;
-        return {};
+        return {};// 失败路径不回填 outInfo（spec 风险 2：半成品已删，回填即误报）
+    }
+    if (outInfo) {// 成功收尾单点回填（av_write_trailer 之后）
+        outInfo->srcRate = srcRate;
+        outInfo->srcChannels = srcChannels;
+        outInfo->outRate = outRate;
+        outInfo->outChannels = outChannels;
+        outInfo->frames = samplePos;
     }
     return outPath;
 }

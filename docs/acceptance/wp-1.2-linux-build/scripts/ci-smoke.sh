@@ -76,4 +76,8 @@ for i in 1 2 3 4 5 6; do
     fi
 done
 echo "  体检 PASS"
+
+echo "== 命令层 JSON 面（FR-24：CMD 用例族，parity 同款接线）=="
+bash docs/acceptance/fr24-command-layer/scripts/run-json.sh "$BUILD"
+
 echo "== ci-smoke 全绿 =="

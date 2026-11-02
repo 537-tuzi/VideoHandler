@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QList>
 #include <QObject>
 #include <QString>
 #include <atomic>
@@ -8,6 +9,22 @@
 class IStreamEngine;
 enum class HumBase;// hum 基频制式（定义在 dspdenoiser.h，槽参数用）
 
+// 结构化探测结果：probeText（GUI 中文渲染）与命令层 JSON result 各取所需，单一 FFmpeg 遍历实现
+struct ProbeStream {
+    int index = -1;
+    QString mediaType;// "video" / "audio" / "other"
+    QString codec;
+    int width = 0, height = 0;// 视频流才有
+    int sampleRate = 0, channels = 0;// 音频流才有
+};
+
+struct ProbeInfo {
+    QString container;
+    qint64 sizeBytes = 0;
+    qint64 durationUs = 0;// AV_TIME_BASE 微秒；<=0 未知
+    QList<ProbeStream> streams;
+};
+
 // FFmpeg 任务执行者：分离/转码/降噪的静态核心供 CLI 复用，slots 供后台线程调度
 class FFExtractor : public QObject
 {
@@ -15,11 +32,15 @@ class FFExtractor : public QObject
 public:
     explicit FFExtractor(QObject* parent = nullptr);
     void setCancelFlag(std::atomic<bool>* flag);// 初始化取消标志（由服务装配）
-    static bool probe(const QString& inPath, QString* info);// 探测文件流信息，false 时 info 为错误说明
+    static bool probe(const QString& inPath, QString* info);// 探测文件流信息（中文渲染文本），false 时 info 为错误说明；槽/GUI 兼容面
+    static bool probeInfo(const QString& inPath, ProbeInfo* info, QString* err);// 结构化探测，false 时 err 为错误说明
+    static QString probeText(const ProbeInfo& info);// 结构化信息 → 现有中文渲染（逐字平移，GUI 展示不变）
     static QString extractAudio(const QString& inPath, QString* err, const std::function<void(int)>& onProgress = {},
-                                const std::atomic<bool>* cancel = nullptr);// 提取音轨，成功返回输出路径
+                                const std::atomic<bool>* cancel = nullptr,
+                                const QString& outPath = {});// 提取音轨，成功返回输出路径；outPath 空 = 源目录自动命名
     static QString extractVideo(const QString& inPath, QString* err, const std::function<void(int)>& onProgress = {},
-                                const std::atomic<bool>* cancel = nullptr);// 提取无声视频，成功返回输出路径
+                                const std::atomic<bool>* cancel = nullptr,
+                                const QString& outPath = {});// 提取无声视频；outPath 空 = 源目录自动命名
 private:
     void runJob(const QString& inPath, IStreamEngine& engine, const char* suffix, const QString& okMsg,
                 int outRate = 0, int outChannels = 0);// 统一流式引擎任务收尾；输出规格 0=跟随源

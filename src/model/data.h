@@ -7,6 +7,7 @@ inline constexpr auto kSuffixMute = "_mute";// 无声视频输出文件后缀
 inline constexpr int kCanonicalRate = 44100;// 兜底采样率：AI/分离路径输出与源信息缺失时的回落；transcode/denoise/pitch 输出跟随源
 inline constexpr int kCanonicalChannels = 2;// 兜底声道数：交错 float32，输出跟随源时折到 min(源,2)
 inline constexpr auto kSuffixDenoised = "_denoised";// 降噪输出文件后缀
+inline constexpr auto kSuffixTranscoded = "_transcoded";// 直通转码输出文件后缀（命令层缺省命名；GUI 无对应按钮）
 inline constexpr auto kSuffixAi = "_ai";// AI 降噪输出文件后缀
 inline constexpr auto kAiModelRelPath = "models/denoiser/gtcrn_simple.onnx";// 模型相对 exe 路径
 inline constexpr auto kSuffixPitch = "_pitch";// 变调输出文件后缀
