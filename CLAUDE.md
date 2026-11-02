@@ -77,7 +77,7 @@ test/fft_test        FFT 性质 DUT（仅非 WIN32；FFT-PR 自检 + numpy 对�
 ## 方向（详见 REQUIREMENTS.md 第 9 节）
 
 - 执行顺序：**正确性兜底（P0 债 1–5）→ 离线闭环（注册表/DFN3/管线串联/批处理）→ RVC 变声 → 实时化**。
-- 架构演进：引擎注册表（NFR-M1）+ 无头命令层（FR-24，GUI 与未来 Agent 共用）+ 工作区版本化（FR-A4）。
+- 架构演进：无头命令层（FR-24）与引擎注册表（NFR-M1，含 ErrInfo 结构化错误通道）**已落地**；下一步工作区版本化（FR-A4）→ FR-8 模型管理 → FR-9 管线串联。
 - 开放问题：仅剩 O3 RVC 延迟实测（实时化前，真机脉冲法；v1.2 定级「未证实」，变声链最坏算术 181ms 超支）。O1/O2/O4 已于 2026-10-14 调研关闭（`docs/reference/research-index.md`）；残余 = 发版前法务复核项（sherpa 书面确认、ContentVec 作者 MIT 声明确认——权重继承链已证不存在、Qwen 逐仓库 LICENSE 核对，随 NFR-C2 落实）。
 
 ## 红线
