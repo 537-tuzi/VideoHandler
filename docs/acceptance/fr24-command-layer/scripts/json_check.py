@@ -13,6 +13,7 @@
 #   bool:<path>=true     布尔相等
 #   contains:<path>=<片段> 字符串包含
 #   numrange:<path>=<min>:<max> 数字落在闭区间
+#   keys:<path>=<逗号列表> 对象键集恰等（sorted 比对；防 direct 面意外长出 workspace 族键）
 #   absent:<path>        路径不得存在（负例防 result 泄漏）
 #   exists:<path>        路径取值为字符串且指向的文件存在
 import json
@@ -81,6 +82,10 @@ def main():
                 lo, hi = want.split(":", 1)
                 if not ok or not isinstance(v, (int, float)) or not (float(lo) <= float(v) <= float(hi)):
                     bad.append(f"{path} 期望落在 [{lo},{hi}]，实为 {v!r}")
+            elif head == "keys":
+                want_keys = sorted(k for k in want.split(",") if k)
+                if not ok or not isinstance(v, dict) or sorted(v) != want_keys:
+                    bad.append(f"{path} 期望键集 {want_keys}，实为 {sorted(v) if isinstance(v, dict) else v!r}")
             else:
                 bad.append(f"未知断言：{a}")
         elif "=" in a:

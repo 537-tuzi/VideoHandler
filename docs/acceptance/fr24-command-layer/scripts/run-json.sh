@@ -62,7 +62,8 @@ jr CMD-002 0 "{\"v\":1,\"cmd\":\"transcode\",\"input\":\"$W/st.wav\",\"output\":
     ok=true v=1 cmd=transcode num:result.sourceSpec.sampleRate=44100 num:result.sourceSpec.channels=2 \
     num:result.outputSpec.sampleRate=44100 num:result.outputSpec.channels=2 \
     str:result.outputSpec.format=pcm_f32le bool:result.engineResampled=false \
-    num:result.frames=220500 num:result.durationSec=5 exists:result.output
+    num:result.frames=220500 num:result.durationSec=5 exists:result.output \
+    keys:result=durationSec,engineResampled,frames,output,outputSpec,sourceSpec,truncated
 fp CMD-002f "$W/c2.wav" "pcm_f32le,44100,2"
 jr CMD-003 0 "{\"v\":1,\"cmd\":\"transcode\",\"input\":\"$W/st48k.wav\",\"output\":\"$W/c3.wav\"}" \
     ok=true cmd=transcode num:result.outputSpec.sampleRate=48000 num:result.outputSpec.channels=2 \

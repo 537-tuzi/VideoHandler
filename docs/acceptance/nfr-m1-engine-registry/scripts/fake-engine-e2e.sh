@@ -33,22 +33,21 @@ ln -s "$REPO/third_party" "$WT/third_party"
 # detached 提交不触 main（无分支引用，用后即弃）。文件清单 = 主树 vs HEAD 的 src/ 差异全集
 # ——完整性断言（审查 P2-1）：清单必须等于「主树 vs HEAD 差异 + untracked src/ 新文件」，
 #    漏拷纯逻辑改动会静默测试旧代码（接口改型类漏拷则构建破裂，此断言兜住其余形态）——
-# 清单 = 主树 vs HEAD 的 src/ 差异全集（随基线合入滚动更新：NFR-M1 片 A/B 已在 HEAD，
-# 当前基线 = FR-A4 片 A 的未提交改动）
+# 清单 = 主树 vs HEAD 的 src/ 差异全集（随基线合入滚动更新：FR-A4 片 A 已在 HEAD，
+# 当前基线 = FR-A4 片 B 的未提交改动；CMakeLists 本片零改故不在清单）
 BASELINE_FILES=$(printf '%s\n' \
-    src/model/data.h src/service/commandlayer.cpp src/service/ffextractor.cpp \
-    src/service/ffextractor.h src/service/fftranscoder.cpp src/service/fftranscoder.h \
-    src/service/workspace.cpp src/service/workspace.h CMakeLists.txt | sort)
+    src/model/data.h src/service/ffextractor.cpp src/service/ffextractor.h \
+    src/service/mediaservice.cpp src/service/mediaservice.h src/view/mainwidget.cpp \
+    src/view/mainwidget.h | sort)
 DRIFT_FILES=$( { git diff --name-only HEAD -- src/ CMakeLists.txt; git ls-files --others --exclude-standard src/; } | sort)
 if [ "$BASELINE_FILES" != "$DRIFT_FILES" ]; then
     echo "FAIL: 基线拷贝清单与主树实际漂移不一致（脚本清单过期，纯逻辑改动会被静默漏测）："
     diff <(echo "$BASELINE_FILES") <(echo "$DRIFT_FILES"); exit 1
 fi
-cp src/service/commandlayer.cpp src/service/ffextractor.cpp src/service/ffextractor.h \
-   src/service/fftranscoder.cpp src/service/fftranscoder.h src/service/workspace.cpp \
-   src/service/workspace.h "$WT/src/service/"
+cp src/service/ffextractor.cpp src/service/ffextractor.h src/service/mediaservice.cpp \
+   src/service/mediaservice.h "$WT/src/service/"
 cp src/model/data.h "$WT/src/model/"
-cp CMakeLists.txt "$WT/CMakeLists.txt"
+cp src/view/mainwidget.cpp src/view/mainwidget.h "$WT/src/view/"
 git -C "$WT" add -A
 git -C "$WT" -c user.name=nfr-m1 -c user.email=nfr-m1@local diff --cached --quiet \
     || git -C "$WT" -c user.name=nfr-m1 -c user.email=nfr-m1@local commit -q -m "NFR-M1 片 A/B 基线（临时 detached 提交，验收用后即弃）"

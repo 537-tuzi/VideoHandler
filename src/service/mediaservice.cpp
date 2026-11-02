@@ -32,6 +32,8 @@ void MediaService::init_connect() {
     connect(this, &MediaService::aiDenoiseRequested, worker, &FFExtractor::doDenoiseAiWav);
     connect(this, &MediaService::pitchRequested, worker, &FFExtractor::doPitchWav);
     connect(this, &MediaService::sepVocalsRequested, worker, &FFExtractor::doSepVocals);
+    connect(this, &MediaService::workspaceRootRequested, worker, &FFExtractor::setWorkspaceRoot);// FR-A4 片 B：根注入（装配期 setCancelFlag 同型，队列投递到 worker 线程）
+    connect(this, &MediaService::wsInfoRequested, worker, &FFExtractor::doWsInfo);// 处理历史查询（probe 同型）
     connect(worker, &FFExtractor::progress, this, &MediaService::progress);
     connect(worker, &FFExtractor::jobDone, this, [this](bool ok, const QString& message) {
         busy = false;
@@ -39,10 +41,19 @@ void MediaService::init_connect() {
         emit jobFinished(ok, message);
     });
     connect(worker, &FFExtractor::probeDone, this, &MediaService::probeFinished);
+    connect(worker, &FFExtractor::wsInfoDone, this, &MediaService::wsInfoFinished);
 }
 
 void MediaService::cancelJob() {
     cancelFlag = true;
+}
+
+void MediaService::setWorkspaceRoot(const QString& root) {
+    emit workspaceRootRequested(root);// 排队进后台线程（worker 据此给任务请求组 workspace 键）
+}
+
+void MediaService::wsInfo(const QString& input) {
+    emit wsInfoRequested(input);// 只读查询排队进后台线程，不占 busy（首查大文件哈希数秒不冻 UI）
 }
 
 void MediaService::probe(const QString& inPath) {

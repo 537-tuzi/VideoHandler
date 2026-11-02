@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QStringList>
 
@@ -124,6 +125,38 @@ FFExtractor::FFExtractor(QObject* parent) : QObject(parent) {}
 
 void FFExtractor::setCancelFlag(std::atomic<bool>* flag) {
     cancelFlag = flag;
+}
+
+void FFExtractor::setWorkspaceRoot(const QString& root) {
+    workspaceRoot = root;
+}
+
+// 处理历史查询（FR-A4 片 B）：wsInfo 只读动词走同一 execute，root 用注入成员（与任务请求同根，
+// 保证历史查的正是任务落的）；result 序列化为 Compact JSON 经信号回传（QString，免自定义 QMetaType），
+// 失败回传 error message。不占 busy——首查大文件哈希数秒，在 worker 线程跑正是为了不冻 UI
+void FFExtractor::doWsInfo(const QString& input) {
+    QJsonObject req;
+    req.insert(QStringLiteral("v"), 1);
+    req.insert(QStringLiteral("cmd"), QStringLiteral("wsInfo"));
+    req.insert(QStringLiteral("root"), workspaceRoot);
+    req.insert(QStringLiteral("input"), input);
+    QJsonObject resp;
+    try {
+        resp = CommandLayer::execute(req);// 只读查询：无取消/进度语义，Ctx 缺省
+    } catch (const std::exception& e) {
+        emit wsInfoDone(false, QStringLiteral("查询异常终止：%1").arg(QString::fromUtf8(e.what())));
+        return;
+    } catch (...) {
+        emit wsInfoDone(false, QStringLiteral("查询异常终止（未知异常）"));
+        return;
+    }
+    if (resp.value(QStringLiteral("ok")).toBool()) {
+        const QJsonDocument doc(resp.value(QStringLiteral("result")).toObject());
+        emit wsInfoDone(true, QString::fromUtf8(doc.toJson(QJsonDocument::Compact)));
+    } else {
+        emit wsInfoDone(false, resp.value(QStringLiteral("error")).toObject()
+                             .value(QStringLiteral("message")).toString());
+    }
 }
 
 bool FFExtractor::probeInfo(const QString& inPath, ProbeInfo* info, QString* err) {
@@ -267,14 +300,18 @@ void FFExtractor::doProbe(const QString& inPath) {
 }
 
 // 统一命令层收尾（FR-24 片 D，spec D6）：组好的请求交 execute，取消标志/进度回调经 Ctx 注入；
-// 兜底 catch 与命令层 E_INTERNAL 双保险——execute 契约不抛出，此处防其本身违约抛出穿透 worker 槽
+// 兜底 catch 与命令层 E_INTERNAL 双保险——execute 契约不抛出，此处防其本身违约抛出穿透 worker 槽。
+// FR-A4 片 B：根非空时在此单点组 workspace 键（七个任务槽共用，probe 走 doProbe 直调不经此、
+// wsInfo 走 doWsInfo 自组请求——两者天然不插键）；空串不组键 = direct 模式行为零漂移
 void FFExtractor::runRequest(const QJsonObject& req, const QString& okMsg) {
+    QJsonObject request = req;
+    if (!workspaceRoot.isEmpty()) request.insert(QStringLiteral("workspace"), workspaceRoot);
     CommandLayer::Ctx ctx;
     ctx.cancel = cancelFlag;
     ctx.onProgress = [this](int pct) { emit progress(pct); };
     QJsonObject resp;
     try {
-        resp = CommandLayer::execute(req, ctx);
+        resp = CommandLayer::execute(request, ctx);
     } catch (const std::exception& e) {
         emit jobDone(false, QStringLiteral("任务异常终止：%1").arg(QString::fromUtf8(e.what())));
         return;

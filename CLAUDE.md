@@ -28,7 +28,7 @@ VideoHandler — Qt6 Widgets + FFmpeg + ONNX Runtime 的音频处理桌面软件
   ```
   另有 `--extract-audio <in>` / `--extract-video <in>`（FFExtractor 流复制，输出到源目录）；argc≥3 即进 CLI，无参数启动 GUI。
 - **FR-24 无头命令面**：`video_handler --json`（请求从 stdin 读 UTF-8 JSON，stdout 恒回单个 JSON 文档；动词 transcode/denoise/aiDenoise/pitch/separate/probe/extractAudio/extractVideo/wsInfo，schema/错误码/结果对象契约见 `docs/spec/fr24-command-layer.md`）；上面 7 个旧动词与 GUI 七槽（片 D）是同一核心（`CommandLayer::execute`）的薄壳，验收 `docs/acceptance/fr24-command-layer/`（CMD-*/GUI-* 用例，CMD-* 随 ci-smoke 跑）。
-- **FR-A4 工作区（片 A）**：请求带 `workspace:<根目录>` 即工作区模式——产物落 `<根>/<stem>.<hash8>/vNNN_<cmd>/`、result 增量带 `workspace:{root,dir,version}`、版本记录含来源链（filled 参数/输入哈希/模型摘要/parentVersion/输出真值+truncated）；`workspace` 与 `output` 互斥、probe/wsInfo 拒收；不带则 direct 模式行为零漂移。`wsInfo` 只读查询（root+input）。契约 `docs/spec/fr-a4-workspace.md`，验收 `docs/acceptance/fr-a4-workspace/`（WS 族随 ci-smoke 跑）。GUI 接线在片 B。
+- **FR-A4 工作区（片 A+B 已落地）**：请求带 `workspace:<根目录>` 即工作区模式——产物落 `<根>/<stem>.<hash8>/vNNN_<cmd>/`、result 增量带 `workspace:{root,dir,version}`、版本记录含来源链（filled 参数/输入哈希/模型摘要/parentVersion/输出真值+truncated）；`workspace` 与 `output` 互斥、probe/wsInfo 拒收；不带则 direct 模式行为零漂移。`wsInfo` 只读查询（root+input）。GUI 七槽缺省走工作区无开关硬切（QSettings 只记根路径、单点插键在 `FFExtractor::runRequest`、busy 期间历史/继续不击穿任务锁）。契约 `docs/spec/fr-a4-workspace.md`，验收 `docs/acceptance/fr-a4-workspace/`（WS+GWS 族随 ci-smoke 跑）。
 - 暂无单测框架；引擎正确性验收 = parity 测试（对照官方实现，−60dB RMS 准入，NFR-Q1，WP-1.1 已建）：随 ci-smoke 跑（`docs/acceptance/engine-parity/scripts/run_parity.sh`），缺 Python 参考依赖的族整族 SKIP、`PARITY_REQUIRED=1` 时升级 FAIL；换参考实现版本后 `gen_golden.py --force` 重生成金样本。
 
 ## 架构（现状）

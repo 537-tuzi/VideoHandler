@@ -83,4 +83,7 @@ bash docs/acceptance/fr24-command-layer/scripts/run-json.sh "$BUILD"
 echo "== 工作区版本化（FR-A4 片 A：WS 用例族，run-json 同款接线；缺 onnx 时 WS-030b SKIP）=="
 bash docs/acceptance/fr-a4-workspace/scripts/run-ws.sh "$BUILD"
 
+echo "== GUI 工作区接线（FR-A4 片 B：GWS 用例族，探针直调 FFExtractor 槽；缺 onnx 时硬退）=="
+bash docs/acceptance/fr-a4-workspace/scripts/gui-ws.sh "$BUILD"
+
 echo "== ci-smoke 全绿 =="

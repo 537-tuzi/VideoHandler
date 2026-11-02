@@ -1,58 +1,72 @@
-case,round-1,说明
-WS-001,PASS,首任务自动建工作区 e2e：denoise 带 workspace → ok:true、产物入版本目录、result 含 frames=220500/truncated=false/workspace.root+version=1
-WS-002,PASS,目录结构 <stem>.<hash8>/v001_denoise/（根下唯一工作区目录、版本目录三位零填充带动词名）
-WS-003,PASS,版本产物在版本目录内且文件名沿用注册表后缀自描述（st_denoised.wav）
-WS-004,PASS,workspace.json 源登记四字段（sha256/sizeBytes/spec.sampleRate=44100/spec.channels=2）+ head=1 + versions 恰 1 条
-WS-005,PASS,根级缓存回填：index.json 含 {path,size,mtimeMs,ws} 四键指向工作区目录
-WS-006,PASS,内容哈希身份·同内容换路径=同工作区：alias.wav（与 st.wav 同字节）→ dir=st.<hash8>（先登记者留名）、version=2；首跑红灯暴露跨 stem 身份断裂，resolveWsDir 根目录扫修复（round-1 §3）
-WS-007,PASS,同内容追加：head=2、versions=2、source.path 刷新为 alias.wav 绝对路径（身份哈希不动、链不断）
-WS-008,PASS,同名不同内容=不同工作区：st_nameclash.wav（48k 内容）→ 独立工作区 st_nameclash.<hash48k>、version=1
-WS-009,PASS,pitch 追加 version=3（缓存命中免哈希路径）
-WS-010,PASS,v001 记录登记后不可变（append-only：JSON 规范化序列化比对逐字节一致）
-WS-011,PASS,head=3、versions=3
-WS-012,PASS,链式输入·同工作区：以 v001 产物为输入（缓存命中产物条目）→ dir 不变、version=4
-WS-013,PASS,v004 记录 parentVersion=1 + input 登记（绝对路径 + 现算 sha256）
-WS-014,PASS,链式输入·跨工作区：删根缓存强制哈希路径 → 产物作源开新工作区 alias_transcoded.<hash8>
-WS-015,PASS,跨工作区哈希衔接：新工作区 source.sha256 == 产物哈希（D3）+ versions[0].parentVersion=null
-WS-016,PASS,filled 参数记录：denoise 未传参 → params={humBase:'50',wind:true}（缺省回填）、model=null、cmd=denoise；transcode params={}
-WS-017,PASS,输出真值转录：frames=220500、outputSpec 44100/2、truncated=false、time 字段在
-WS-018,PASS,有模型动词 aiDenoise 独立根 version=1
-WS-018b,PASS,原件只读补面：aiDenoise（有模型动词）工作区任务前后源 sha256 不变（审查 P3-2）
-WS-019,PASS,模型摘要：path=绝对路径、sizeBytes=实测字节数、mtimeMs 在、params={}（model 顶层另有槽位）
-WS-020,PASS,extractAudio 工作区模式：产物 v001_extractAudio/tiny_audio.m4a（底座命名规则，工作区只给目录）
-WS-021,PASS,extract 版本记录 output 恰 {path}（流复制无转码真值）、params={}
-WS-022,PASS,wsInfo 与权威索引一致：exists=true、dir、head=4、versions[3].parentVersion=1、source.sha256
-WS-023,PASS,wsInfo 的 versions/source 与 workspace.json 逐字段一致（独立进程再查，深度相等）
-WS-024,PASS,原件只读：denoise 工作区任务前后源文件 sha256 不变
-WS-025,PASS,原件只读：extractVideo 工作区任务前后源文件 sha256 不变
-WS-026,PASS,direct 防线：output==input → E_PARAMS「output 不能与 input 相同（原件只读）」
-WS-027,PASS,互斥：workspace+output 同给 → E_PARAMS「output 与 workspace 不能同给」；且无产物残留
-WS-028,PASS,probe 拒收 workspace：E_PARAMS「probe 不接受 workspace」
-WS-029,PASS,只读根：E_FILE「工作区根建不了」exit 1 无 result（plan 段失败）
-WS-029f,PASS,只读根零残迹：根目录未被创建
-WS-030,PASS,缺模型：E_MODEL「找不到模型」（runEngine 存在性检查先于 plan，无版本目录）
-WS-031,PASS,失败后 workspace.json 逐字节不变（索引只在成功后写）
-WS-032,PASS,失败无版本目录残留
-WS-030b,PASS,任务期失败（craft-mismatch-model.py 维度错位模型）：E_ENGINE、任务失败路径
-WS-030b-i,PASS,任务期失败后索引仍逐字节不变
-WS-030b-f,PASS,任务期失败版本目录已补删（登记器 owns 生命周期：plan 占位、失败必收）
-WS-033,PASS,失败残迹不阻后续：下一任务 version=5（被补删的 v005 号回收无歧义——目录已删且索引从未登记）
-WS-034,PASS,head=5、versions=5
-WS-035,PASS,根级缓存损坏按空处理：任务 ok version=6（加速层可丢弃，哈希路径重建）
-WS-036,PASS,权威索引损坏 → E_FILE「工作区索引读不了」（真相源坏不可静默重建）
-WS-036b,PASS,类型损坏前置：新根正常建 v001（合法基线，供 036c 注入）
-WS-036c,PASS,类型损坏（合法 JSON、含键、错类型：versions 改字符串）→ 同 E_FILE 拒任务（审查 P1：修复前 toArray() 返回空数组、任务 ok=true 且版本史被静默清空——append-only 不变式被击穿；主线程独立复现：head=2/版本=2 → 第三次任务 → 仅剩 1 条）
-WS-036d,PASS,类型损坏后索引原样未被改写（versions 仍为注入串）、无新版本目录（真相源不被静默重建/清空，loadWsIndex 三键类型校验 versions 数组+head 数字+source 对象）
-WS-037,PASS,孤儿目录安全跳过：预置 v007_denoise（kill -9 残迹等价形态）→ 下一版本 v008 不复用
-WS-038,PASS,head=8、versions=7、清单无 version==7 记录（号不复用防新旧混淆）
-WS-039,PASS,未登记查询：exists=false、head=0、versions=[]
-WS-040,PASS,查询不落盘：未登记不建目录（前后目录计数一致）
-WS-041,PASS,wsInfo 缺 root：E_PARAMS「root 缺失」
-WS-042,PASS,wsInfo root 类型错：E_PARAMS「root 必须是字符串」
-WS-043,PASS,wsInfo 未知字段：E_PARAMS「未知字段：bogus」（信封白名单 extraKeys={root}）
-WS-044,PASS,workspace 非字符串：E_PARAMS「workspace 必须是字符串」
-WS-045,PASS,workspace 空串：E_PARAMS「workspace 不能为空」
-WS-046,PASS,wsInfo 拒收 workspace：E_PARAMS「wsInfo 不接受 workspace」（只读查询无落盘语义）
-WS-047,PASS,截断素材：ok:true + truncated=false + 可解前缀完整输出（frames 70000:80000，头 300000B 恰含整数帧）
-WS-048,PASS,截断素材版本记录 output.truncated=false；truncated=true 分支 e2e 不可构造，代码级映射见 round-1 §6-A
-WS-049,PASS,内存有界：30min 16k 单声道素材首任务（含全量 sha256）vs direct 峰值 RSS |Δ|=1.0MiB < 32MiB（证伪整文件载入；素材 ~55MiB）
+case,round-1,round-2,说明
+WS-001,,PASS,首任务自动建工作区 e2e：denoise 带 workspace → ok:true、产物入版本目录、result 含 frames=220500/truncated=false/workspace.root+version=1
+WS-002,,PASS,目录结构 <stem>.<hash8>/v001_denoise/（根下唯一工作区目录、版本目录三位零填充带动词名）
+WS-003,,PASS,版本产物在版本目录内且文件名沿用注册表后缀自描述（st_denoised.wav）
+WS-004,,PASS,workspace.json 源登记四字段（sha256/sizeBytes/spec.sampleRate=44100/spec.channels=2）+ head=1 + versions 恰 1 条
+WS-005,,PASS,根级缓存回填：index.json 含 {path,size,mtimeMs,ws} 四键指向工作区目录
+WS-006,,PASS,内容哈希身份·同内容换路径=同工作区：alias.wav（与 st.wav 同字节）→ dir=st.<hash8>（先登记者留名）、version=2；首跑红灯暴露跨 stem 身份断裂，resolveWsDir 根目录扫修复（round-1 §3）
+WS-007,,PASS,同内容追加：head=2、versions=2、source.path 刷新为 alias.wav 绝对路径（身份哈希不动、链不断）
+WS-008,,PASS,同名不同内容=不同工作区：st_nameclash.wav（48k 内容）→ 独立工作区 st_nameclash.<hash48k>、version=1
+WS-009,,PASS,pitch 追加 version=3（缓存命中免哈希路径）
+WS-010,,PASS,v001 记录登记后不可变（append-only：JSON 规范化序列化比对逐字节一致）
+WS-011,,PASS,head=3、versions=3
+WS-012,,PASS,链式输入·同工作区：以 v001 产物为输入（缓存命中产物条目）→ dir 不变、version=4
+WS-013,,PASS,v004 记录 parentVersion=1 + input 登记（绝对路径 + 现算 sha256）
+WS-014,,PASS,链式输入·跨工作区：删根缓存强制哈希路径 → 产物作源开新工作区 alias_transcoded.<hash8>
+WS-015,,PASS,跨工作区哈希衔接：新工作区 source.sha256 == 产物哈希（D3）+ versions[0].parentVersion=null
+WS-016,,PASS,filled 参数记录：denoise 未传参 → params={humBase:'50',wind:true}（缺省回填）、model=null、cmd=denoise；transcode params={}
+WS-017,,PASS,输出真值转录：frames=220500、outputSpec 44100/2、truncated=false、time 字段在
+WS-018,,PASS,有模型动词 aiDenoise 独立根 version=1
+WS-018b,,PASS,原件只读补面：aiDenoise（有模型动词）工作区任务前后源 sha256 不变（审查 P3-2）
+WS-019,,PASS,模型摘要：path=绝对路径、sizeBytes=实测字节数、mtimeMs 在、params={}（model 顶层另有槽位）
+WS-020,,PASS,extractAudio 工作区模式：产物 v001_extractAudio/tiny_audio.m4a（底座命名规则，工作区只给目录）
+WS-021,,PASS,extract 版本记录 output 恰 {path}（流复制无转码真值）、params={}
+WS-022,,PASS,wsInfo 与权威索引一致：exists=true、dir、head=4、versions[3].parentVersion=1、source.sha256
+WS-023,,PASS,wsInfo 的 versions/source 与 workspace.json 逐字段一致（独立进程再查，深度相等）
+WS-024,,PASS,原件只读：denoise 工作区任务前后源文件 sha256 不变
+WS-025,,PASS,原件只读：extractVideo 工作区任务前后源文件 sha256 不变
+WS-026,,PASS,direct 防线：output==input → E_PARAMS「output 不能与 input 相同（原件只读）」
+WS-027,,PASS,互斥：workspace+output 同给 → E_PARAMS「output 与 workspace 不能同给」；且无产物残留
+WS-028,,PASS,probe 拒收 workspace：E_PARAMS「probe 不接受 workspace」
+WS-029,,PASS,只读根：E_FILE「工作区根建不了」exit 1 无 result（plan 段失败）
+WS-029f,,PASS,只读根零残迹：根目录未被创建
+WS-030,,PASS,缺模型：E_MODEL「找不到模型」（runEngine 存在性检查先于 plan，无版本目录）
+WS-031,,PASS,失败后 workspace.json 逐字节不变（索引只在成功后写）
+WS-032,,PASS,失败无版本目录残留
+WS-030b,,PASS,任务期失败（craft-mismatch-model.py 维度错位模型）：E_ENGINE、任务失败路径
+WS-030b-i,,PASS,任务期失败后索引仍逐字节不变
+WS-030b-f,,PASS,任务期失败版本目录已补删（登记器 owns 生命周期：plan 占位、失败必收）
+WS-033,,PASS,失败残迹不阻后续：下一任务 version=5（被补删的 v005 号回收无歧义——目录已删且索引从未登记）
+WS-034,,PASS,head=5、versions=5
+WS-035,,PASS,根级缓存损坏按空处理：任务 ok version=6（加速层可丢弃，哈希路径重建）
+WS-036,,PASS,权威索引损坏 → E_FILE「工作区索引读不了」（真相源坏不可静默重建）
+WS-036b,,PASS,类型损坏前置：新根正常建 v001（合法基线，供 036c 注入）
+WS-036c,,PASS,类型损坏（合法 JSON、含键、错类型：versions 改字符串）→ 同 E_FILE 拒任务（审查 P1：修复前 toArray() 返回空数组、任务 ok=true 且版本史被静默清空——append-only 不变式被击穿；主线程独立复现：head=2/版本=2 → 第三次任务 → 仅剩 1 条）
+WS-036d,,PASS,类型损坏后索引原样未被改写（versions 仍为注入串）、无新版本目录（真相源不被静默重建/清空，loadWsIndex 三键类型校验 versions 数组+head 数字+source 对象）
+WS-037,,PASS,孤儿目录安全跳过：预置 v007_denoise（kill -9 残迹等价形态）→ 下一版本 v008 不复用
+WS-038,,PASS,head=8、versions=7、清单无 version==7 记录（号不复用防新旧混淆）
+WS-039,,PASS,未登记查询：exists=false、head=0、versions=[]
+WS-040,,PASS,查询不落盘：未登记不建目录（前后目录计数一致）
+WS-041,,PASS,wsInfo 缺 root：E_PARAMS「root 缺失」
+WS-042,,PASS,wsInfo root 类型错：E_PARAMS「root 必须是字符串」
+WS-043,,PASS,wsInfo 未知字段：E_PARAMS「未知字段：bogus」（信封白名单 extraKeys={root}）
+WS-044,,PASS,workspace 非字符串：E_PARAMS「workspace 必须是字符串」
+WS-045,,PASS,workspace 空串：E_PARAMS「workspace 不能为空」
+WS-046,,PASS,wsInfo 拒收 workspace：E_PARAMS「wsInfo 不接受 workspace」（只读查询无落盘语义）
+WS-047,,PASS,截断素材：ok:true + truncated=false + 可解前缀完整输出（frames 70000:80000，头 300000B 恰含整数帧）
+WS-048,,PASS,截断素材版本记录 output.truncated=false；truncated=true 分支 e2e 不可构造，代码级映射见 round-1 §6-A
+WS-049,,PASS,内存有界：30min 16k 单声道素材首任务（含全量 sha256）vs direct 峰值 RSS |Δ|=1.0MiB < 32MiB（证伪整文件载入；素材 ~55MiB）
+GWS-001,,PASS,七槽+继续链 setWorkspaceRoot 后 ok=1、jobDone 文案格式不变（「XX完成：<路径>」）且路径 <root>/<工作区>/vNNN_<cmd>/<产物>（前缀+结构双段式）
+GWS-001b,,PASS,八个版本目录与产物全部在盘（含继续链 v006_denoise/st_denoised_denoised.wav）
+GWS-002,,PASS,workspace.json 结构：st 工作区 head=6/versions=6/动词序列正确/parentVersion 链（v006←v001，前 5 版无父）；tiny 工作区 head=2/versions=2
+GWS-003,,PASS,三相全程结束后源文件 sha256 不变（st.wav/tiny.mp4，原件只读）
+GWS-004,,PASS,doWsInfo 槽回传 result 与 workspace.json 深度一致（python 比对 dir/head/versions/source）+ 全部版本产物（含「继续」回拼路径 result.dir+output.path）在盘
+GWS-005,,PASS,默认不 setWorkspaceRoot → direct 形状：产物落源目录（tiny_audio.m4a/tiny_mute.mp4/st_denoised.wav，fr24 GUI-PRD 同形状）
+GWS-005b,,PASS,GUI 槽 direct 产物与 CLI --denoise-wav 直跑产物 cmp 逐字节一致（跨面互证：未插 workspace 键）
+GWS-006,,PASS,预置 cancelFlag：「已取消」文案直通（denoise/extractAudio 双路）+ 两工作区 workspace.json 逐字节不变 + 无版本目录残留
+GWS-007,,PASS,root 注入后 probe 槽仍正常（探测文案照常，证 probe 请求未被插 workspace 键；direct 相同证）
+GWS-007b,,PASS,direct 相 probe 槽正常（默认无 root 注入的探测形状不变）
+GWS-008,,PASS,换根只影响后续任务：同输入在 root1/root2 各落独立工作区、版本号都从 v001 起（round-3 adv 相）
+GWS-009,,PASS,中文根+中文素材直通：工作区名（stem.hash8）与产物名（中文素材_denoised.wav）全程正确（round-3 adv 相）
+GWS-010,,PASS,doWsInfo 对不在盘输入回失败载荷：ok=0 + 非空错误说明（onWsInfoDone 警告分支数据面，round-3 adv 相）
+GWS-011,,PASS,注入过 root 后置空串回 direct：不插键、产物落源目录（与 GWS-005 默认空串对称，round-3 adv 相）

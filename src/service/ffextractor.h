@@ -28,7 +28,9 @@ struct ProbeInfo {
 };
 
 // FFmpeg 任务执行者：提取/探测静态核心供命令层复用，slots 为 GUI worker 壳——组 JSON 请求走
-// CommandLayer::execute（FR-24 片 D），取消/进度经 Ctx 注入，响应拆包重建 GUI 文案（逐字不变）
+// CommandLayer::execute（FR-24 片 D），取消/进度经 Ctx 注入，响应拆包重建 GUI 文案（逐字不变）。
+// FR-A4 片 B：任务请求经 setWorkspaceRoot 注入的根组 workspace 键（空串不组键 = direct 模式零漂移）；
+// 历史查询 doWsInfo 走同一 execute（wsInfo 只读动词，首查大文件哈希在 worker 线程不冻 UI）
 class FFExtractor : public QObject
 {
     Q_OBJECT
@@ -47,11 +49,15 @@ public:
 private:
     void runRequest(const QJsonObject& req, const QString& okMsg);// 统一命令层收尾：请求交 execute（取消/进度经 Ctx 注入），响应拆包 → jobDone（成功文案由壳重建，spec D6）
     std::atomic<bool>* cancelFlag = nullptr;// 服务装配的取消标志，经 Ctx 透传给命令层分块循环检查
+    QString workspaceRoot;// 工作区根（FR-A4 片 B，GUI 经队列信号注入）；空串 = 任务不带 workspace 键（direct 模式，CLI/默认构造零漂移）
 signals:
     void progress(int pct);// 任务进度百分比
     void jobDone(bool ok, const QString& message);// 任务完成通知
     void probeDone(bool ok, const QString& info);// 文件探测完成
+    void wsInfoDone(bool ok, const QString& json);// 处理历史查询完成（ok 时 json 为 result 的 Compact JSON，失败为错误说明）
 public slots:
+    void setWorkspaceRoot(const QString& root);// 注入工作区根（装配期 setCancelFlag 同型，经队列信号投递到 worker 线程）
+    void doWsInfo(const QString& input);// 后台处理历史查询（wsInfo 只读动词，不占 busy；root 取注入成员）
     void doExtractAudio(const QString& inPath);// 后台提取音轨
     void doExtractVideo(const QString& inPath);// 后台提取无声视频
     void doProbe(const QString& inPath);// 后台探测文件流信息
