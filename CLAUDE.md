@@ -52,7 +52,7 @@ test/fft_test        FFT 性质 DUT（仅非 WIN32；FFT-PR 自检 + numpy 对�
 关键约定（新代码必须遵守）：
 
 - 引擎缓冲自持：`process()` 输出可滞后于输入，`flush()` 收尾；FFTranscoder 已按此假设处理任意滞后的引擎。
-- 输出统一 44.1k/2ch float WAV；采样率/声道换算全部由 FFTranscoder 的两个 SwrContext 负责，引擎只声明自己要什么规格。
+- 输出规格跟随源（采样率限幅 8k–192k、声道 min(源,2)），AI 降噪/人声分离显式用兜底 44.1k/2ch（模型工作点锁定，spec `docs/spec/canonical-rate-48k.md`）；采样率/声道换算全部由 FFTranscoder 的两个 SwrContext 负责，引擎只声明自己要什么规格；`kCanonicalRate` 语义=兜底。
 - ORT 引擎用 PIMPL（`struct Impl; std::unique_ptr<Impl>`）；模型参数（sample_rate/n_fft/hop/窗型/状态 shape）从 ONNX metadata 读，**勿硬编码**——例外：MDX 模型无 metadata，参数按「文件末 10000KiB MD5 查内置 UVR 官方表」取得（WP-1.4）。
 - FFmpeg 胶水的失败路径必须零泄漏：沿用现有 `do{}while(false)` + 集中释放 + 失败删半成品的风格。
 - 注释与 UI 文案用中文；常量 `kCamelCase`，方法驼峰；每个头文件首行注释说明职责。
@@ -63,7 +63,7 @@ test/fft_test        FFT 性质 DUT（仅非 WIN32；FFT-PR 自检 + numpy 对�
 1. **无 parity 测试**——**已修（2026-11-02，WP-1.1）**：四族 parity 全绿并进 ci-smoke 门禁（`engine-parity/scripts/run_parity.sh`；CI 以 `PARITY_REQUIRED=1` 强制，本地缺依赖族降级 SKIP）：GTCRN vs sherpa-onnx −123.9dB（两债修复：反射帧网格 + WOLA÷Σw² + 反射尾帧，输出长度约定 (N//hop)·hop）、MDX vs audio-separator 块级化复刻官方 demix 8/8 机器精度、DSP hum50 float32 同构分级判据、变调谱判据；证据 `docs/acceptance/engine-parity/`（round-1..4 + report.md）。改引擎后必跑 ci-smoke。Windows 随 round-4 真机。
 2. `util/fft.h`：Bluestein 全 float 有精度风险；MDX 对 2 的幂帧也走 Bluestein（慢且亏精度，应直通基-2）；radix-2 无 twiddle 预计算表——**已修（2026-10-18，WP-1.3）**：twiddle double 主表 + 2 的幂直通 + Bluestein 加固（chirp 整数索引查表 / b 序列 init 期 double / 运行期 chirp double 直乘，频域卷积仍 float），FFT-PR 五项全绿（往返最差 −132dB vs −130 门槛、numpy 对照 −137dB 起），512/16k 直通提速 6.5–6.9×；`fft_test` DUT 入 ci-smoke；证据 `docs/acceptance/wp-1.3-fft-rewrite/`。Windows 编译随 round-4。
 3. `vocalseparator` 输出读法与参数双双有错（2026-10-14 调研实锤）——**已修（2026-10-18，WP-1.4）**：plane-major `[1,4,dimF,dimT]` 读法、末 10000KiB MD5 查内置 UVR 官方表取参（nFft=dimF*2 推导废除）、前 3 频点置零、compensate/primary_stem 语义（副 stem = mix − compensate×主 stem，实测 1.02100）、输出契约校验（dtype/shape/布局，负例三分支全中且无残留）；顺修 avail 截断除法假帧越界与 RSS：`DisableCpuMemArena()` 后 120s 峰值 1.48GB（原 2.58GB）过 NFR-P4；另修复 wantSub 公式取反（两 stem 角色曾对调）。数值 parity 对照官方归 WP-1.1；Windows 随 round-4。证据 `docs/acceptance/wp-1.4-separator-contract/`。
-4. `kCanonicalRate=44100` 对视频源（48k）造成两次重采样；canonical 应改 48k 可配置（NFR-Q3）。
+4. `kCanonicalRate=44100` 对视频源（48k）造成两次重采样；canonical 应改 48k 可配置（NFR-Q3）——**已修（2026-11-02，P0 #4）**：输出规格改为跟随源（限幅 8k–192k、声道 min(源,2)），transcode/denoise/pitch 三路引擎 setup 前经 `probeSourceSpec` 取源规格、48k 源全链免重采样（PAR-SR-001 bit-exact）；AI 降噪/人声分离显式保持兜底 44.1k（模型工作点锁定）；NFR-Q3 落实口径=`docs/spec/canonical-rate-48k.md`，证据 `docs/acceptance/engine-parity/round-5.md`。Windows 随 round-4 真机。
 5. `dspdenoiser` 50Hz 硬编码（60Hz 电网地区无效）。
 6. LGPL 合规：SoundTouch 静态链接 + FFmpeg 构建混用（gyan 导入库 + BtbN DLL）需修正（NFR-C3）。
 7. `IStreamEngine::process` 每次堆分配返回 vector——实时化前需加 `processInto` 零分配变体（NFR-L2）。

@@ -26,8 +26,10 @@ static int run_cli(int argc, char* argv[]) {
             QTextStream(stdout) << "FAIL: 用法 --transcode-wav <输入> <输出.wav>\n";
             return 1;
         }
+        int rate = 0, channels = 0;
+        FFTranscoder::probeSourceSpec(in, &rate, &channels);// 直通引擎与输出规格均跟随源（P0 债 #4）
         DspDenoiser passthrough;
-        passthrough.setup(kCanonicalRate, kCanonicalChannels, false, false);// 无滤波即直通
+        passthrough.setup(rate, channels, false, false);// 无滤波即直通
         out = FFTranscoder::transcodeStreamWav(in, QString::fromLocal8Bit(argv[3]), passthrough, nullptr, &err);
     }
     else if (mode == QStringLiteral("--denoise-wav")) {
@@ -35,8 +37,10 @@ static int run_cli(int argc, char* argv[]) {
             QTextStream(stdout) << "FAIL: 用法 --denoise-wav <输入> <输出.wav>\n";
             return 1;
         }
+        int rate = 0, channels = 0;
+        FFTranscoder::probeSourceSpec(in, &rate, &channels);// 陷波/高通系数在源率上计算，48k 全链免重采样
         DspDenoiser denoiser;
-        denoiser.setup(kCanonicalRate, kCanonicalChannels, true, true);
+        denoiser.setup(rate, channels, true, true);
         out = FFTranscoder::transcodeStreamWav(in, QString::fromLocal8Bit(argv[3]), denoiser, nullptr, &err);
     }
     else if (mode == QStringLiteral("--ai-denoise")) {
@@ -56,7 +60,9 @@ static int run_cli(int argc, char* argv[]) {
             QTextStream(stdout) << "FAIL: " << setupErr << "\n";
             return 1;
         }
-        out = FFTranscoder::transcodeStreamWav(in, QString::fromLocal8Bit(argv[3]), ai, nullptr, &err);
+        // GTCRN 工作点锁 16k 单声道，输出保持兜底规格 44.1k 立体声——本工作包有意不改此路径（spec §2）
+        out = FFTranscoder::transcodeStreamWav(in, QString::fromLocal8Bit(argv[3]), ai, nullptr, &err,
+                                               {}, kCanonicalRate, kCanonicalChannels);
     }
     else if (mode == QStringLiteral("--pitch-wav")) {
         if (argc < 5) {
@@ -69,9 +75,11 @@ static int run_cli(int argc, char* argv[]) {
             QTextStream(stdout) << "FAIL: 半音数不是数字\n";
             return 1;
         }
+        int rate = 0, channels = 0;
+        FFTranscoder::probeSourceSpec(in, &rate, &channels);// SoundTouch 在源率上变调，48k 全链免重采样
         PitchShifter shifter;
         QString setupErr;
-        if (!shifter.setup(kCanonicalRate, kCanonicalChannels, semi, &setupErr)) {
+        if (!shifter.setup(rate, channels, semi, &setupErr)) {
             QTextStream(stdout) << "FAIL: " << setupErr << "\n";
             return 1;
         }
@@ -95,7 +103,9 @@ static int run_cli(int argc, char* argv[]) {
             QTextStream(stdout) << "FAIL: " << setupErr << "\n";
             return 1;
         }
-        out = FFTranscoder::transcodeStreamWav(in, QString::fromLocal8Bit(argv[3]), sep, nullptr, &err);
+        // MDX 工作点锁 44.1k 立体声，输出保持兜底规格——本工作包有意不改此路径（spec §2）
+        out = FFTranscoder::transcodeStreamWav(in, QString::fromLocal8Bit(argv[3]), sep, nullptr, &err,
+                                               {}, kCanonicalRate, kCanonicalChannels);
     }
     else out = FFExtractor::extractAudio(in, &err);
     QTextStream ts(stdout);

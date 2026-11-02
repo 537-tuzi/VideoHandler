@@ -4,8 +4,8 @@
 inline constexpr auto kAppTitle = "视频音频处理工具";// 主窗口标题
 inline constexpr auto kSuffixAudio = "_audio";// 音轨输出文件后缀
 inline constexpr auto kSuffixMute = "_mute";// 无声视频输出文件后缀
-inline constexpr int kCanonicalRate = 44100;// 统一采样率：处理引擎工作点
-inline constexpr int kCanonicalChannels = 2;// 统一声道数：交错 float32
+inline constexpr int kCanonicalRate = 44100;// 兜底采样率：AI/分离路径输出与源信息缺失时的回落；transcode/denoise/pitch 输出跟随源
+inline constexpr int kCanonicalChannels = 2;// 兜底声道数：交错 float32，输出跟随源时折到 min(源,2)
 inline constexpr auto kSuffixDenoised = "_denoised";// 降噪输出文件后缀
 inline constexpr auto kSuffixAi = "_ai";// AI 降噪输出文件后缀
 inline constexpr auto kAiModelRelPath = "models/denoiser/gtcrn_simple.onnx";// 模型相对 exe 路径

@@ -219,14 +219,16 @@ void FFExtractor::doProbe(const QString& inPath) {
     emit probeDone(ok, info);
 }
 
-void FFExtractor::runJob(const QString& inPath, IStreamEngine& engine, const char* suffix, const QString& okMsg) {
+void FFExtractor::runJob(const QString& inPath, IStreamEngine& engine, const char* suffix, const QString& okMsg,
+                         int outRate, int outChannels) {
     QFileInfo fi(inPath);
     const QString outPath = fi.absolutePath() + "/" + fi.completeBaseName() + suffix + ".wav";
     QString err;
     QString out;
     try {// 兜底屏障（A2）：引擎契约失效或其他异常不得穿透 worker 槽致 std::terminate
         out = FFTranscoder::transcodeStreamWav(inPath, outPath, engine, cancelFlag, &err,
-                                               [this](int pct) { emit progress(pct); });
+                                               [this](int pct) { emit progress(pct); },
+                                               outRate, outChannels);
     } catch (const std::exception& e) {
         err = QStringLiteral("任务异常终止：%1").arg(QString::fromUtf8(e.what()));
     } catch (...) {
@@ -237,8 +239,10 @@ void FFExtractor::runJob(const QString& inPath, IStreamEngine& engine, const cha
 }
 
 void FFExtractor::doDenoiseWav(const QString& inPath, bool removeHum, bool removeWind) {
+    int rate = 0, channels = 0;
+    FFTranscoder::probeSourceSpec(inPath, &rate, &channels);// 工作点跟随源：48k 源全链免重采样（P0 债 #4）
     DspDenoiser denoiser;
-    denoiser.setup(kCanonicalRate, kCanonicalChannels, removeHum, removeWind);
+    denoiser.setup(rate, channels, removeHum, removeWind);
     runJob(inPath, denoiser, kSuffixDenoised, QStringLiteral("降噪完成"));
 }
 
@@ -254,13 +258,16 @@ void FFExtractor::doDenoiseAiWav(const QString& inPath) {
         emit jobDone(false, err);
         return;
     }
-    runJob(inPath, ai, kSuffixAi, QStringLiteral("AI 降噪完成"));
+    // GTCRN 工作点锁 16k 单声道，输出保持兜底规格 44.1k 立体声——本工作包有意不改此路径（spec §2）
+    runJob(inPath, ai, kSuffixAi, QStringLiteral("AI 降噪完成"), kCanonicalRate, kCanonicalChannels);
 }
 
 void FFExtractor::doPitchWav(const QString& inPath, double semiTones) {
+    int rate = 0, channels = 0;
+    FFTranscoder::probeSourceSpec(inPath, &rate, &channels);// 工作点跟随源：48k 源全链免重采样（P0 债 #4）
     PitchShifter shifter;
     QString err;
-    if (!shifter.setup(kCanonicalRate, kCanonicalChannels, semiTones, &err)) {
+    if (!shifter.setup(rate, channels, semiTones, &err)) {
         emit jobDone(false, err);
         return;
     }
@@ -280,8 +287,10 @@ void FFExtractor::doSepVocals(const QString& inPath, bool instrumental) {
         emit jobDone(false, err);
         return;
     }
+    // MDX 工作点锁 44.1k 立体声，输出保持兜底规格——本工作包有意不改此路径（spec §2）
     runJob(inPath, sep, instrumental ? kSuffixInstrumental : kSuffixVocals,
-           instrumental ? QStringLiteral("伴奏提取完成") : QStringLiteral("人声分离完成"));
+           instrumental ? QStringLiteral("伴奏提取完成") : QStringLiteral("人声分离完成"),
+           kCanonicalRate, kCanonicalChannels);
 }
 
 void FFExtractor::doExtractAudio(const QString& inPath) {

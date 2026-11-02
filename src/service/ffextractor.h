@@ -20,7 +20,8 @@ public:
     static QString extractVideo(const QString& inPath, QString* err, const std::function<void(int)>& onProgress = {},
                                 const std::atomic<bool>* cancel = nullptr);// 提取无声视频，成功返回输出路径
 private:
-    void runJob(const QString& inPath, IStreamEngine& engine, const char* suffix, const QString& okMsg);// 统一流式引擎任务收尾
+    void runJob(const QString& inPath, IStreamEngine& engine, const char* suffix, const QString& okMsg,
+                int outRate = 0, int outChannels = 0);// 统一流式引擎任务收尾；输出规格 0=跟随源
     std::atomic<bool>* cancelFlag = nullptr;// 服务装配的取消标志，转码分块循环检查
 signals:
     void progress(int pct);// 任务进度百分比

@@ -14,6 +14,7 @@ from scipy.io import wavfile
 
 SR_ST = 44100   # MDX/DSP 引擎规格
 SR_MO = 16000   # GTCRN 引擎规格
+SR_48 = 48000   # 视频源常见率（PAR-SR 输出跟随源用例）
 SEED = 20261018
 OUT = Path(__file__).resolve().parents[4] / 'test' / 'parity'
 
@@ -59,6 +60,8 @@ CASES = [
     ('odd1s',     None,                             SR_ST, '非整 hop 尾·1s（1024*43+123，MDX 用：引擎契约最短 ~0.17s，odd 太短被拒）'),
     ('short',     white(300 / SR_ST, SR_ST, 2), SR_ST, '短于 1 hop（300 样本）'),
     ('multi12s',  white(12.0, SR_ST, 2),       SR_ST, '多 batch（>dimT 帧，MDX 批间衔接）'),
+    ('white48k',  white(5.0, SR_48, 2),        SR_48, 'PAR-SR 48k 全频带（直通 bit-exact + DSP@48k parity）'),
+    ('sine48k',   sine(440, 5.0, SR_48, 2),    SR_48, 'PAR-SR 48k 变调靶（+2 半音谱判据）'),
     # GTCRN 边界组（round-3）：white16mo 前 N 样本前缀（同 seed 同生成器 → 逐字节同前缀）
     ('bound100',  None, SR_MO, 'GTCRN 边界：短于 hop（零输出约定）'),
     ('bound255',  None, SR_MO, 'GTCRN 边界：hop−1（零输出约定）'),

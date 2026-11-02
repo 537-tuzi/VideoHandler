@@ -3,7 +3,8 @@
 
 子命令：
   dsp  <素材名...>          scipy RBJ 级联（与 DspDenoiser 同参：50/100/150Hz Q30 陷波
-                            + 100Hz Q0.7071 高通 @44.1k），双精度主参考 + float32 同构参考
+                            + 100Hz Q0.7071 高通；sr 取素材在 fixtures.json 登记的元数据，
+                            44.1k/48k 素材各自成参考），双精度主参考 + float32 同构参考
                             （系数/信号均 f32，lfilter f32 累加——hum50 分级判据用，round-1 §2）
   gtcrn <素材名...>         sherpa-onnx OfflineSpeechDenoiser 同模型推理（16k 单声道裸流直入，
                             num_threads=1 与引擎一致；round-3 实锤输出 = (N//hop)·hop 裁头对齐）
@@ -69,12 +70,11 @@ def rbj_highpass(f0: float, q: float, sr: float):
 
 def do_dsp(names):
     from scipy.signal import lfilter
-    sr = 44100.0
-    bs, a = [], None
-    for h in (1, 2, 3):
-        bs.append(rbj_notch(50.0 * h, 30.0, sr))
-    hp = rbj_highpass(100.0, 0.7071, sr)
+    fx = fixtures()
     for name in names:
+        sr = float(fx[name]['sr'])# 素材登记采样率：48k 素材（PAR-SR）在源率上成参考，44.1k 素材同旧
+        bs = [rbj_notch(50.0 * h, 30.0, sr) for h in (1, 2, 3)]
+        hp = rbj_highpass(100.0, 0.7071, sr)
         x64 = np.fromfile(OUT / f'{name}.f32', dtype='<f4').reshape(-1, 2).astype(np.float64)
         y = np.empty_like(x64)
         y32 = np.empty_like(x64)

@@ -14,12 +14,15 @@ NFR-Q1 落地：五引擎对照官方/独立参考实现的数值 parity 测试�
 | SG-4 MDX parity | audio-separator 官方管线 vs vocalseparator（PAR-MD，边界=反射填充） | **round-3 收敛全绿 8/8**：机器精度 −107.6~−145.4dB corr 1.000000。三重归因（normalize 工作点/×peak 域/块级 OLA+块尾 reflect）→ 判据同工作点（gen_golden mdx 旁路+域重建）→ 引擎块级化复刻官方分块（step=195840/块内 reflect/hanning OLA+divider，环形 3MB 有界） |
 | SG-5 变调性质 | pitch(+n)∘pitch(−n) 往返恒等 + 长度一致（PAR-PT，无独立参考） | round-1 全绿（谱判据） |
 | SG-6 接入 CI | parity 套件并入 ci-smoke.sh + 依赖版本锁依赖矩阵 | **round-4 完成**：run_parity.sh 四族编排（缺依赖族 SKIP / PARITY_REQUIRED=1 升级 FAIL，CI=强制点）+ 金样本哈希复用/反漂移（--force 换版本重生成）+ pitch_check 固化 + workflow venv 同 pin + 版本矩阵入 ci-build-strategy §4；正例全绿 + 负例三连（必判 FAIL/裸机降级/篡改重生成）。**WP-1.1 全 sub goal 收官，report.md 落档** |
+| SG-7 输出跟随源 | 转码层输出规格跟随源，消灭 48k 源双重重采样（P0 债 #4 / NFR-Q3，spec canonical-rate-48k §2）：transcodeStreamWav 尾加 outRate/outChannels（0=跟随源）+ probeSourceSpec 轻量探测；DSP/变调引擎 setup 改用源率，AI/MDX 路径显式传兜底规格不动（PAR-SR，**CLI 级 DUT** 与 engine_test 族互补——此族考转码层） | **round-5 全绿**：48k 直通 bit-exact（240000/240000）+ DSP@48k −71.1dB + 变调 +2 谱判据（+200.41 音分/48.2dB/−0.00dB/长度 0 差）+ 44.1k 回归无回退（PAR-DS/PT 数值逐位同旧 + 体检仍 44100）；反证：模拟旧 44.1k 往返链 vs 48k 金样本 −10.2dB 必 FAIL |
 
 FFT 性质五件套（FFT-PR）已在 WP-1.3 落地并入 ci-smoke，不重复建。分块不变性照妖镜已在 WP-1.2 并入 ci-smoke（五引擎），不重复。
 
 ## 重大决策
 
 - **DUT 用 engine_test（裸 f32 直调引擎）而非 CLI**：parity 纯比引擎段，绕开 swr 重采样核差异（spec §5 对策的更彻底形态）；MDX 喂 44.1k 立体声裸流、GTCRN 喂 16k 单声道裸流。参考实现侧喂同内容的 pcm_f32le wav（无 16bit 量化垫噪）。CLI 级 e2e 行为由 ci-smoke 冒烟覆盖。
+- **SG-7 输出规格=跟随源而非「canonical 改 48k」（round-5，spec canonical-rate-48k §2 拍板）**：`transcodeStreamWav` 尾参 outRate/outChannels（0=跟随源，规整 8k–192k / min(源,2)，无效回落兜底）；DSP/变调引擎 setup 用 `probeSourceSpec` 探测的源规格（avformat 开读即关；失败不拦任务——后续 open_decoder 给正式报错，回落兜底规格）。AI/MDX 路径显式传 kCanonicalRate/kCanonicalChannels，模型工作点不动（spec 明示本工作包不改）。**PAR-SR 是唯一 CLI 级 DUT 族**：考的是转码层（WAV 头/bypass 判据/toOut 目标），与 engine_test 族正交互补。
+- **PAR-SR-002b 单程变调用 --expect-cents 200（round-5）**：单程 +2 若沿用「|cents|≤10」口径，未变调的 bypass 也会过门——判据改为「|cents−200|≤10」，bypass 输出 0 音分即 FAIL。
 - **PAR-PT 变调往返用谱判据而非逐样本**：SoundTouch +2∘−2 逐样本残差 −12.9dB 是 WSOLA 往返相位漂移（正弦相位敏感），非缺陷。判据 = 长度 0 差 + 峰频误差 <10 音分（实测 0.00）+ 峰外杂散抑制 ≥40dB（实测 58.8dB）+ RMS 守恒 ±0.1dB（实测 +0.00）。
 - **PAR-DS 判据分级（round-1）**：通带用例（white/sine1k/odd）vs double 参考 −60dB 硬线全过；陷波深度用例（hum50）vs double 只剩 −15.9dB，判别实验证明主因是 float32 系数量化（同构 scipy-float32 参考同样崩，理论深度上限 −26.7dB）——引擎固有精度而非实现 bug，改用 vs float32 同构参考 ≤−45dB 线（实测 −50.9）。精度债随 WP-1.6 double 化消灭后收回该分级。
 - **venv 不可用（python3.14 无 ensurepip）→ pip3 --user --break-system-packages**：PEP 668 环境装 ~/.local，不动系统目录；CI 侧用工作流 pip 装。
@@ -44,4 +47,6 @@ FFT 性质五件套（FFT-PR）已在 WP-1.3 落地并入 ci-smoke，不重复�
 - **GTCRN 两债机理修正（round-3 子代理实锤）**：债②主因不是首尾窗分母欠补偿（发射区 Σw² 恒=1），而是旧引擎缺反射尾帧（参考对最后样本镜像补帧）；分母补偿保留（istft 语义正确且零成本）。参考语义锁定：center 网格 + 双侧 reflect + WOLA÷Σw² + 裁头，帧数 = N//hop+1，python 离线复刻 vs golden −153.0dB（float64 机器精度）。
 - **子代理对抗式审查闭环（round-3）**：3 维度 × 验证共 11 代理，0 confirmed / 3 killed / 1 uncertain——该 P1（runModel 失败后 specCount 残留致越界写）针对 round-3a 旧代码，块级化已删 specCount 成员；主线程在最终代码上复核失败-重试路径幂等安全（失败发生在谱累计之前，环形仅零扩展），判定失效关闭。
 - GTCRN 规格防护收紧（主线程审查发现）：setup 约束由 hop≥winLen/2 收紧为 hop==winLen/2——feedPending 的 need=winLen−half 与 slideAnalysis 每步吃 hop 仅在等式下一致，否则假想导出会越界读 pending；GTCRN 导出恒为该规格。
+- **SG-7 素材/金样本口径（round-5）**：white48k/sine48k @48000/2ch（gen_inputs SR_48=48000）；`gen_golden.py dsp` 分支 sr 参数化——取素材在 fixtures.json 登记的 sr 元数据（44.1k 素材同旧路径，哈希不变，PAR-DS 数值逐位复现）；`pitch_check.py` 加 `--sr`（rfftfreq 用，48k 素材必传）与 `--expect-cents`（默认 44100/0，PAR-PT 口径不变）；新增 `sr_check.py`（CLI 输出 WAV 头断言 + bit-exact + --dump 裸流导出供 compare/pitch_check 复用）。
+- **SG-7 probe 一致性边界（round-5 已知）**：引擎 setup 用 probe 的 codecpar->sample_rate，转码输出用 open_decoder 后的 dec->sample_rate——两者不一致的怪文件会多一次 toOut 重采样（行为仍正确，仅非零重采样）；WAV/常见容器下两者恒等。
 

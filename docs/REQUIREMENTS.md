@@ -169,7 +169,7 @@
 
 - **NFR-Q1**：每个推理引擎对官方参考实现 parity ≤ −60dB RMS（GTCRN↔sherpa-onnx；MDX↔audio-separator；DFN3↔官方 Rust runtime；RVC↔官方推理；ASR↔whisper.cpp 参考输出）。**不过不上线。**（GTCRN/MDX/DSP/变调已落地并进 CI 门禁：WP-1.1，`docs/acceptance/engine-parity/`，2026-11-02；其余引擎随各自工作包落地时同标准接入）
 - **NFR-Q2**：DSP 降噪在 200Hz–20kHz 通带内 |H| 波动 ≤±0.1dB。
-- **NFR-Q3**：视频源 48kHz 全程不经过 44.1k 往返（canonical 改 48k 可配置；修正现有 `data.h` 的 44100）。
+- **NFR-Q3**：视频源 48kHz 全程不经过 44.1k 往返（canonical 改 48k 可配置；修正现有 `data.h` 的 44100）。已落实（2026-11-02，P0 #4）：口径定为「输出跟随源」而非 canonical→48k（决策 `docs/spec/canonical-rate-48k.md`），transcode/denoise/pitch 三路 48k 全链直通 bit-exact（PAR-SR-001，`docs/acceptance/engine-parity/round-5.md`）；AI/分离路径输出仍 44.1k（模型工作点锁定，48k 回源率属后续可选优化）。
 - **NFR-Q4**：浮点内部链，导出可选 limiter/normalize，保证无削波。
 
 ### 5.4 可靠性

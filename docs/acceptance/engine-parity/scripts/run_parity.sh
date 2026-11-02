@@ -6,6 +6,7 @@
 # 依赖分级（缺哪族跳哪族，SKIP 大声打印）：
 #   PAR-DS：scipy（~/.local）        PAR-GT：sherpa-onnx（~/.local）
 #   PAR-MD：audio-separator（test/pydeps，PYTHONPATH 注入）   PAR-PT：numpy
+#   PAR-SR：scipy + ffmpeg + video_handler（round-5 起转码层 CLI 级 DUT）
 # 环境变量 PARITY_REQUIRED=1（CI）时任何 SKIP 升级为 FAIL——CI 是 parity 门禁的强制点，
 # 本地未装参考实现依赖时允许降级跑其余族。
 # 用法：run_parity.sh [构建目录=build-linux]
@@ -108,6 +109,42 @@ if "$ET" pitch "$OUT/sine440.f32" "$W/p1.f32" 4096 2.0 >/dev/null \
     ck python3 "$S/pitch_check.py" "$OUT/sine440.f32" "$W/p2.f32" --case PAR-PT-001
 else
     echo "  FAIL: pitch DUT 运行"; FAIL=1
+fi
+
+# PAR-SR（round-5，输出跟随源 / P0 债 #4，spec canonical-rate-48k §4）：CLI 级 DUT
+#（video_handler），与 engine_test 族互补——这条族考的是转码层，48k 源全链免重采样。
+# PAR-SR-003/004（44.1k 回归/分离不变）不设独立判定：PAR-DS/PAR-PT/PAR-MD 同轮全绿 +
+# ci-smoke w1–w6 体检断言（44100/2ch）即证据，matrix 记交叉引用。
+echo "== PAR-SR（输出跟随源：48k 全链直通；CLI 级 DUT vs ffmpeg 解码参考/scipy@48k）=="
+VH="$BUILD/video_handler"
+if [ -x "$VH" ] && command -v ffmpeg >/dev/null 2>&1 && python3 -c 'import scipy' 2>/dev/null; then
+    ok=1
+    "$VH" --transcode-wav "$OUT/white48k.wav" "$W/white48k.t.wav"  >/dev/null 2>&1 || ok=0
+    "$VH" --denoise-wav   "$OUT/white48k.wav" "$W/white48k.dn.wav" >/dev/null 2>&1 || ok=0
+    "$VH" --pitch-wav     "$OUT/sine48k.wav"  "$W/sine48k.p2.wav"  2.0 >/dev/null 2>&1 || ok=0
+    ffmpeg -y -loglevel error -i "$OUT/white48k.wav" -f f32le -c:a pcm_f32le \
+        -ar 48000 -ac 2 "$W/white48k.ref.f32" 2>/dev/null || ok=0
+    if [ "$ok" = 1 ]; then
+        # PAR-SR-001：直通引擎 48k → 输出头跟随源 + vs ffmpeg 解码参考逐样本 bit-exact
+        ck python3 "$S/sr_check.py" "$W/white48k.t.wav" --case PAR-SR-001 --sr 48000 --ch 2 \
+            --bitexact-vs "$W/white48k.ref.f32"
+        # PAR-SR-002a：DSP 降噪 48k → 头跟随源 + vs scipy RBJ@48k 双精度参考（sr 取素材登记元数据）
+        ck python3 "$S/sr_check.py" "$W/white48k.dn.wav" --case PAR-SR-002a-head --sr 48000 --ch 2 \
+            --dump "$W/white48k.dn.f32"
+        python3 "$S/gen_golden.py" dsp white48k >/dev/null || { echo "  FAIL: dsp 金样本生成（48k）"; FAIL=1; }
+        ck python3 "$S/compare.py" "$W/white48k.dn.f32" "$OUT/white48k.dsp.golden.f32" --case PAR-SR-002a --gate -60
+        # PAR-SR-002b：变调 48k +2 半音 → 头跟随源 + 单程谱判据（峰频 +200 音分，--sr 参数化）
+        ck python3 "$S/sr_check.py" "$W/sine48k.p2.wav" --case PAR-SR-002b-head --sr 48000 --ch 2 \
+            --dump "$W/sine48k.p2.f32"
+        ck python3 "$S/pitch_check.py" "$OUT/sine48k.f32" "$W/sine48k.p2.f32" \
+            --case PAR-SR-002b --sr 48000 --expect-cents 200
+    else
+        echo "  FAIL: PAR-SR DUT 运行（video_handler --transcode/--denoise/--pitch 或 ffmpeg 解码参考）"; FAIL=1
+    fi
+else
+    [ -x "$VH" ] || skip "PAR-SR 缺 $VH（先构建 video_handler）"
+    command -v ffmpeg >/dev/null 2>&1 || skip "PAR-SR 缺 ffmpeg"
+    python3 -c 'import scipy' 2>/dev/null || skip "PAR-SR 缺 scipy（配方 scripts/requirements.txt）"
 fi
 
 if [ "$FAIL" = 1 ]; then
