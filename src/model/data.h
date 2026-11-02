@@ -14,3 +14,6 @@ inline constexpr auto kSuffixPitch = "_pitch";// 变调输出文件后缀
 inline constexpr auto kSuffixVocals = "_vocals";// 人声分离输出文件后缀
 inline constexpr auto kSuffixInstrumental = "_instrumental";// 伴奏提取输出文件后缀
 inline constexpr auto kSepModelRelPath = "models/separator/UVR-MDX-NET-Voc_FT.onnx";// 模型相对 exe 路径
+inline constexpr auto kWsRootCacheFile = "index.json";// 工作区根级路径缓存文件名（可丢弃可重建，损坏按空处理）
+inline constexpr auto kWsIndexFile = "workspace.json";// 工作区权威索引文件名（源登记 + 版本清单 + head）
+inline constexpr auto kWsDefaultRootName = "VideoHandler-Workspace";// 缺省工作区根目录名（用户主目录下，FR-A4 OQ-1）

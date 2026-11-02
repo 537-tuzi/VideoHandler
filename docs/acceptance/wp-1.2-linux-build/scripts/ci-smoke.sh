@@ -80,4 +80,7 @@ echo "  体检 PASS"
 echo "== 命令层 JSON 面（FR-24：CMD 用例族，parity 同款接线）=="
 bash docs/acceptance/fr24-command-layer/scripts/run-json.sh "$BUILD"
 
+echo "== 工作区版本化（FR-A4 片 A：WS 用例族，run-json 同款接线；缺 onnx 时 WS-030b SKIP）=="
+bash docs/acceptance/fr-a4-workspace/scripts/run-ws.sh "$BUILD"
+
 echo "== ci-smoke 全绿 =="

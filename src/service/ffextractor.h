@@ -40,10 +40,10 @@ public:
     static QString probeText(const ProbeInfo& info);// 结构化信息 → 现有中文渲染（逐字平移，GUI 展示不变）
     static QString extractAudio(const QString& inPath, ErrInfo* err, const std::function<void(int)>& onProgress = {},
                                 const std::atomic<bool>* cancel = nullptr,
-                                const QString& outPath = {});// 提取音轨，成功返回输出路径；outPath 空 = 源目录自动命名
+                                const QString& outPath = {}, const QString& outDir = {});// 提取音轨，成功返回输出路径；outPath 空 = 自动命名（outDir 空 = 源目录，非空 = 命名规则跑在该目录内，FR-A4 工作区接管落盘）
     static QString extractVideo(const QString& inPath, ErrInfo* err, const std::function<void(int)>& onProgress = {},
                                 const std::atomic<bool>* cancel = nullptr,
-                                const QString& outPath = {});// 提取无声视频；outPath 空 = 源目录自动命名
+                                const QString& outPath = {}, const QString& outDir = {});// 提取无声视频；outPath 空 = 自动命名（outDir 语义同 extractAudio）
 private:
     void runRequest(const QJsonObject& req, const QString& okMsg);// 统一命令层收尾：请求交 execute（取消/进度经 Ctx 注入），响应拆包 → jobDone（成功文案由壳重建，spec D6）
     std::atomic<bool>* cancelFlag = nullptr;// 服务装配的取消标志，经 Ctx 透传给命令层分块循环检查

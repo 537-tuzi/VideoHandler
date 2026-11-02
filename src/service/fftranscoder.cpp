@@ -142,6 +142,7 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
     int idx = -1;
     int srcRate = 0, srcChannels = 0;// 解码上下文的源规格（D4 真值，供成功收尾回填）
     int64_t samplePos = 0;
+    bool truncated = false;// 源中途读错（≠EOF）：截断标志，成功收尾回填（OQ-5）
     const int ch = engine.inChannels();
     bool bypassOut = false;
 
@@ -243,7 +244,10 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
                     break;
                 }
                 ret = av_read_frame(in, pkt);
-                if (ret < 0) break;// 读到尾或出错都收尾
+                if (ret < 0) {// 读尾区分 EOF 与 I/O 错：中途读错≠正常收尾，置 truncated 如实上报（OQ-5）
+                    if (ret != AVERROR_EOF) truncated = true;
+                    break;
+                }
                 if (pkt->stream_index == idx) {
                     ret = avcodec_send_packet(dec, pkt);
                     if (ret < 0 && ret != AVERROR(EAGAIN)) {
@@ -331,6 +335,7 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
         outInfo->outRate = outRate;
         outInfo->outChannels = outChannels;
         outInfo->frames = samplePos;
+        outInfo->truncated = truncated;
     }
     return outPath;
 }

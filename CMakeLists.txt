@@ -30,6 +30,8 @@ add_library(engine STATIC
     src/service/streamengine.h
     src/service/vocalseparator.h
     src/service/vocalseparator.cpp
+    src/service/workspace.h
+    src/service/workspace.cpp
     src/model/data.h
     src/util/ffutil.h
 )

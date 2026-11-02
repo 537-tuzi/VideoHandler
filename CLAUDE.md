@@ -27,7 +27,8 @@ VideoHandler — Qt6 Widgets + FFmpeg + ONNX Runtime 的音频处理桌面软件
   video_handler --sep-instrumental <in> <out.wav> [model.onnx]
   ```
   另有 `--extract-audio <in>` / `--extract-video <in>`（FFExtractor 流复制，输出到源目录）；argc≥3 即进 CLI，无参数启动 GUI。
-- **FR-24 无头命令面**：`video_handler --json`（请求从 stdin 读 UTF-8 JSON，stdout 恒回单个 JSON 文档；动词 transcode/denoise/aiDenoise/pitch/separate/probe/extractAudio/extractVideo，schema/错误码/结果对象契约见 `docs/spec/fr24-command-layer.md`）；上面 7 个旧动词与 GUI 七槽（片 D）是同一核心（`CommandLayer::execute`）的薄壳，验收 `docs/acceptance/fr24-command-layer/`（CMD-*/GUI-* 用例，CMD-* 随 ci-smoke 跑）。
+- **FR-24 无头命令面**：`video_handler --json`（请求从 stdin 读 UTF-8 JSON，stdout 恒回单个 JSON 文档；动词 transcode/denoise/aiDenoise/pitch/separate/probe/extractAudio/extractVideo/wsInfo，schema/错误码/结果对象契约见 `docs/spec/fr24-command-layer.md`）；上面 7 个旧动词与 GUI 七槽（片 D）是同一核心（`CommandLayer::execute`）的薄壳，验收 `docs/acceptance/fr24-command-layer/`（CMD-*/GUI-* 用例，CMD-* 随 ci-smoke 跑）。
+- **FR-A4 工作区（片 A）**：请求带 `workspace:<根目录>` 即工作区模式——产物落 `<根>/<stem>.<hash8>/vNNN_<cmd>/`、result 增量带 `workspace:{root,dir,version}`、版本记录含来源链（filled 参数/输入哈希/模型摘要/parentVersion/输出真值+truncated）；`workspace` 与 `output` 互斥、probe/wsInfo 拒收；不带则 direct 模式行为零漂移。`wsInfo` 只读查询（root+input）。契约 `docs/spec/fr-a4-workspace.md`，验收 `docs/acceptance/fr-a4-workspace/`（WS 族随 ci-smoke 跑）。GUI 接线在片 B。
 - 暂无单测框架；引擎正确性验收 = parity 测试（对照官方实现，−60dB RMS 准入，NFR-Q1，WP-1.1 已建）：随 ci-smoke 跑（`docs/acceptance/engine-parity/scripts/run_parity.sh`），缺 Python 参考依赖的族整族 SKIP、`PARITY_REQUIRED=1` 时升级 FAIL；换参考实现版本后 `gen_golden.py --force` 重生成金样本。
 
 ## 架构（现状）
@@ -38,7 +39,8 @@ view/mainwidget     唯一窗口；信号槽转发
 service/mediaservice QThread worker 调度 + busy 锁 + 取消原子量（一次一任务）
 service/commandlayer FR-24 无头命令层：execute(QJsonObject,Ctx)→QJsonObject 纯函数（严格校验 + 六类错误码 E_*）；--json 走 stdin/stdout 单 JSON 文档；旧 7 动词是其薄壳；分发=双查表（NFR-M1 片 A：engineregistry 引擎表 → 内置 probe/extract 小表 → 未命中 E_PARAMS）
 service/engineregistry NFR-M1 引擎注册表：转码族 5 动词自描述条目（ParamSpec 校验 schema/工厂闭包吞 setup 异构/setupErrorClass/lockCanonical/后缀），validateParams 是引擎参数校验消息的唯一权威（信封字段模板仍在 commandlayer；与旧处理器逐字兼容）；新增引擎=新 .h/.cpp+表条目+CMake 两行，命令层/GUI/服务层零改（NFR-M1 片 B 已落地：错误码在产生点与文案同点诞生，消费方透传 errCodeText——前缀匹配 classify*/isFileError 已删，OQ-4 三处承载面修正送包解码/写包/写尾 E_INTERNAL→E_FILE）
-service/ffextractor  提取/探测静态核心（probeInfo/extract*）供命令层复用；GUI worker 槽为壳——组 JSON 请求走 CommandLayer::execute（FR-24 片 D），GUI 文案逐字不变
+service/workspace    FR-A4 工作区版本化核心（片 A 已落地）：planVersion/commitVersion/discardVersion/queryInfo 两段提交外壳——身份=内容哈希（根级缓存 path+size+mtimeMs 三键加速，miss 先哈希再扫根目录 `*.<hash8>` 复用既有工作区）、版本目录 vNNN_<cmd> append-only（号不复用孤儿、可回收已删占位）、workspace.json 权威索引 QSaveFile 原子写（登记失败=任务失败删产物不留孤儿）；哈希 64KiB 流式（NFR-P4 口径）
+service/ffextractor  提取/探测静态核心（probeInfo/extract*）供命令层复用；GUI worker 槽为壳——组 JSON 请求走 CommandLayer::execute（FR-24 片 D），GUI 文案逐字不变；extract* 带 outDir 尾参（FR-A4：工作区只给目录，缺省命名规则单一来源仍在底座）
 service/fftranscoder 唯一转码通路：解码 → swr 到引擎规格 → 引擎 → swr 回源规格（跟随源）→ WAV(f32)
 service/errinfo.h    结构化错误通道（NFR-M1 片 B）：ErrCode 六类+None 与 E_* 一一对应，ErrInfo{code,message} 在产生点赋码，errCodeText 是 E_* 字面量唯一来源
 service/ 引擎        全部实现 IStreamEngine { inRate / inChannels / process / flush }
@@ -48,7 +50,7 @@ service/ 引擎        全部实现 IStreamEngine { inRate / inChannels / proces
   vocalseparator     UVR MDX-Net（44.1k 立体声；末 10000KiB MD5 查内置官方表取参；plane-major 输出契约校验）
 util/fft.h           自研 FFT（twiddle double 主表基-2 + Bluestein 任意长度；2 的幂直通）
 util/ffutil.h        FFmpeg 错误码/扩展名胶水
-model/data.h         全局常量（kCanonicalRate=44100、后缀、模型相对路径）
+model/data.h         全局常量（kCanonicalRate=44100、后缀、模型相对路径、工作区索引/缓存文件名）
 test/engine_test     无头引擎 DUT（仅非 WIN32；裸 f32 直调引擎，分块不变性/parity 宿主）
 test/fft_test        FFT 性质 DUT（仅非 WIN32；FFT-PR 自检 + numpy 对照 dump）
 ```
@@ -86,7 +88,7 @@ test/fft_test        FFT 性质 DUT（仅非 WIN32；FFT-PR 自检 + numpy 对�
 - 不引入 GPL 依赖；保持 LGPL/MIT 组合（D1 免费公开发布）。模型许可证逐个核验（文档第 6 节红线表）。
 - 不内置克隆音色模型；RVC 社区模型由用户导入，变声功能须带使用须知（NFR-C5）。
 - 一切处理保持流式、内存有界（NFR-P4：2h 音频峰值 RSS ≤2GB），禁止整文件载入。
-- 原件只读是新工作区机制（FR-A4）的根基：任何新功能不得改写用户源文件。
+- 原件只读是新工作区机制（FR-A4 片 A 已落地 CLI 面）的根基：任何新功能不得改写用户源文件；新功能的落盘动词应提供工作区模式（带 `workspace` 字段），版本目录 append-only 不可改写。
 
 ---
 

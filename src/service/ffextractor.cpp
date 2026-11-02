@@ -198,7 +198,7 @@ bool FFExtractor::probe(const QString& inPath, QString* info) {
 }
 
 QString FFExtractor::extractAudio(const QString& inPath, ErrInfo* err, const std::function<void(int)>& onProgress,
-                                  const std::atomic<bool>* cancel, const QString& outPath) {
+                                  const std::atomic<bool>* cancel, const QString& outPath, const QString& outDir) {
     ErrInfo e;
     AVFormatContext* in = nullptr;
     AVFormatContext* out = nullptr;
@@ -209,9 +209,13 @@ QString FFExtractor::extractAudio(const QString& inPath, ErrInfo* err, const std
         e = open_input(inPath, &in, AVMEDIA_TYPE_AUDIO, &idx);
         if (!e.isEmpty()) break;
         QFileInfo fi(inPath);
-        // 显式路径在输入成功打开后才落位：失败路径绝不误删既有文件
+        // 显式路径在输入成功打开后才落位：失败路径绝不误删既有文件；
+        // 缺省命名规则仍是底座单一来源，outDir 非空时原样跑在该目录内（FR-A4 工作区只给目录不给文件名）
         if (!outPath.isEmpty()) path = outPath;
-        else path = fi.absolutePath() + "/" + fi.completeBaseName() + kSuffixAudio + audio_ext(in->streams[idx]->codecpar->codec_id);
+        else {
+            const QString dir = outDir.isEmpty() ? fi.absolutePath() : outDir;
+            path = dir + "/" + fi.completeBaseName() + kSuffixAudio + audio_ext(in->streams[idx]->codecpar->codec_id);
+        }
         e = open_output(&out, path);
         if (!e.isEmpty()) break;
         e = write_header(in, out, idx);
@@ -226,7 +230,7 @@ QString FFExtractor::extractAudio(const QString& inPath, ErrInfo* err, const std
 }
 
 QString FFExtractor::extractVideo(const QString& inPath, ErrInfo* err, const std::function<void(int)>& onProgress,
-                                  const std::atomic<bool>* cancel, const QString& outPath) {
+                                  const std::atomic<bool>* cancel, const QString& outPath, const QString& outDir) {
     ErrInfo e;
     AVFormatContext* in = nullptr;
     AVFormatContext* out = nullptr;
@@ -237,9 +241,12 @@ QString FFExtractor::extractVideo(const QString& inPath, ErrInfo* err, const std
         e = open_input(inPath, &in, AVMEDIA_TYPE_VIDEO, &idx);
         if (!e.isEmpty()) break;
         QFileInfo fi(inPath);
-        // 显式路径在输入成功打开后才落位：失败路径绝不误删既有文件
+        // 显式路径在输入成功打开后才落位：失败路径绝不误删既有文件；outDir 语义同 extractAudio
         if (!outPath.isEmpty()) path = outPath;
-        else path = fi.absolutePath() + "/" + fi.completeBaseName() + kSuffixMute + "." + fi.suffix();
+        else {
+            const QString dir = outDir.isEmpty() ? fi.absolutePath() : outDir;
+            path = dir + "/" + fi.completeBaseName() + kSuffixMute + "." + fi.suffix();
+        }
         e = open_output(&out, path);
         if (!e.isEmpty()) break;
         e = write_header(in, out, idx);

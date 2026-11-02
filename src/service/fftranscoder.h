@@ -20,6 +20,7 @@ public:
         int srcRate = 0, srcChannels = 0;// 解码上下文的源规格真值（探测近似不可替代）
         int outRate = 0, outChannels = 0;// 规整后实际写盘的输出规格
         int64_t frames = 0;// 输出帧数（每声道样本数）
+        bool truncated = false;// 源中途读错（av_read_frame ≠EOF）标志：输出为可解前缀，如实上报（FR-A4 OQ-5 收口）
     };
     // 轻量探测音轨规格：avformat 打开读流参数即关，供调用方在引擎 setup 前取源规格；失败回落兜底
     static void probeSourceSpec(const QString& inPath, int* rate, int* channels);
