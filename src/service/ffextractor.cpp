@@ -1,19 +1,17 @@
 #include "ffextractor.h"
 
-#include "aidenoiser.h"
-#include "dspdenoiser.h"
-#include "fftranscoder.h"
-#include "pitchshifter.h"
-#include "vocalseparator.h"
+#include "commandlayer.h"
+#include "dspdenoiser.h"// HumBase 制式枚举（槽参数 → 请求字段映射）
 #include "model/data.h"
 #include "util/ffutil.h"
 
 #include <QCoreApplication>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonObject>
 #include <QStringList>
 
-#include <exception>// std::exception，runJob 兜底 catch 用
+#include <exception>// std::exception，runRequest 兜底 catch 用
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -260,90 +258,97 @@ void FFExtractor::doProbe(const QString& inPath) {
     emit probeDone(ok, info);
 }
 
-void FFExtractor::runJob(const QString& inPath, IStreamEngine& engine, const char* suffix, const QString& okMsg,
-                         int outRate, int outChannels) {
-    QFileInfo fi(inPath);
-    const QString outPath = fi.absolutePath() + "/" + fi.completeBaseName() + suffix + ".wav";
-    QString err;
-    QString out;
-    try {// 兜底屏障（A2）：引擎契约失效或其他异常不得穿透 worker 槽致 std::terminate
-        out = FFTranscoder::transcodeStreamWav(inPath, outPath, engine, cancelFlag, &err,
-                                               [this](int pct) { emit progress(pct); },
-                                               outRate, outChannels);
+// 统一命令层收尾（FR-24 片 D，spec D6）：组好的请求交 execute，取消标志/进度回调经 Ctx 注入；
+// 兜底 catch 与命令层 E_INTERNAL 双保险——execute 契约不抛出，此处防其本身违约抛出穿透 worker 槽
+void FFExtractor::runRequest(const QJsonObject& req, const QString& okMsg) {
+    CommandLayer::Ctx ctx;
+    ctx.cancel = cancelFlag;
+    ctx.onProgress = [this](int pct) { emit progress(pct); };
+    QJsonObject resp;
+    try {
+        resp = CommandLayer::execute(req, ctx);
     } catch (const std::exception& e) {
-        err = QStringLiteral("任务异常终止：%1").arg(QString::fromUtf8(e.what()));
+        emit jobDone(false, QStringLiteral("任务异常终止：%1").arg(QString::fromUtf8(e.what())));
+        return;
     } catch (...) {
-        err = QStringLiteral("任务异常终止（未知异常）");
+        emit jobDone(false, QStringLiteral("任务异常终止（未知异常）"));
+        return;
     }
-    if (out.isEmpty()) emit jobDone(false, err);
-    else emit jobDone(true, okMsg + QStringLiteral("：%1").arg(out));
+    if (resp.value(QStringLiteral("ok")).toBool()) {
+        const QString out = resp.value(QStringLiteral("result")).toObject()
+                                .value(QStringLiteral("output")).toString();
+        emit jobDone(true, okMsg + QStringLiteral("：%1").arg(out));
+    } else {
+        // 失败文案直通 error.message：E_CANCELLED 的 message 即「已取消」，mainwidget 特判逐字命中
+        emit jobDone(false, resp.value(QStringLiteral("error")).toObject()
+                             .value(QStringLiteral("message")).toString());
+    }
 }
 
 void FFExtractor::doDenoiseWav(const QString& inPath, HumBase humBase, bool removeWind) {
-    int rate = 0, channels = 0;
-    FFTranscoder::probeSourceSpec(inPath, &rate, &channels);// 工作点跟随源：48k 源全链免重采样（P0 债 #4）
-    DspDenoiser denoiser;
-    denoiser.setup(rate, channels, humBase, removeWind);
-    runJob(inPath, denoiser, kSuffixDenoised, QStringLiteral("降噪完成"));
+    QJsonObject req;
+    req.insert(QStringLiteral("cmd"), QStringLiteral("denoise"));
+    req.insert(QStringLiteral("input"), inPath);
+    req.insert(QStringLiteral("humBase"),
+               humBase == HumBase::Hz60 ? QStringLiteral("60")
+                                        : humBase == HumBase::Off ? QStringLiteral("off")
+                                                                  : QStringLiteral("50"));
+    req.insert(QStringLiteral("wind"), removeWind);
+    // 工作点跟随源（48k 全链免重采样）与 off+off 拒绝均由命令层承担（GUI 侧另有前置拒绝，纵深防御）
+    runRequest(req, QStringLiteral("降噪完成"));
 }
 
 void FFExtractor::doDenoiseAiWav(const QString& inPath) {
+    // GUI 壳保留 appDir 相对缺省解析与「找不到…」文案（缺省策略上移给壳，片 C D2）；
+    // 命令层 model 必填，槽内先解析路径再组 model 字段
     const QString model = QCoreApplication::applicationDirPath() + "/" + kAiModelRelPath;
     if (!QFileInfo::exists(model)) {
         emit jobDone(false, QStringLiteral("找不到 AI 降噪模型：%1").arg(model));
         return;
     }
-    AiDenoiser ai;
-    QString err;
-    if (!ai.setup(model, &err)) {
-        emit jobDone(false, err);
-        return;
-    }
-    // GTCRN 工作点锁 16k 单声道，输出保持兜底规格 44.1k 立体声——本工作包有意不改此路径（spec §2）
-    runJob(inPath, ai, kSuffixAi, QStringLiteral("AI 降噪完成"), kCanonicalRate, kCanonicalChannels);
+    QJsonObject req;
+    req.insert(QStringLiteral("cmd"), QStringLiteral("aiDenoise"));
+    req.insert(QStringLiteral("input"), inPath);
+    req.insert(QStringLiteral("model"), model);
+    // GTCRN 工作点锁 16k 单声道，输出锁兜底规格 44.1k 立体声——命令层 lockCanonical 承担（spec §2 有意保留）
+    runRequest(req, QStringLiteral("AI 降噪完成"));
 }
 
 void FFExtractor::doPitchWav(const QString& inPath, double semiTones) {
-    int rate = 0, channels = 0;
-    FFTranscoder::probeSourceSpec(inPath, &rate, &channels);// 工作点跟随源：48k 源全链免重采样（P0 债 #4）
-    PitchShifter shifter;
-    QString err;
-    if (!shifter.setup(rate, channels, semiTones, &err)) {
-        emit jobDone(false, err);
-        return;
-    }
-    runJob(inPath, shifter, kSuffixPitch, QStringLiteral("变调完成（%1 半音）").arg(semiTones));
+    QJsonObject req;
+    req.insert(QStringLiteral("cmd"), QStringLiteral("pitch"));
+    req.insert(QStringLiteral("input"), inPath);
+    req.insert(QStringLiteral("semi"), semiTones);// GUI 已拒 0/越界（mainwidget），命令层校验为纵深防御
+    runRequest(req, QStringLiteral("变调完成（%1 半音）").arg(semiTones));
 }
 
 void FFExtractor::doSepVocals(const QString& inPath, bool instrumental) {
+    // 同 doDenoiseAiWav：appDir 相对缺省解析 + GUI 文案留在壳，命令层拿显式 model
     const QString model = QCoreApplication::applicationDirPath() + "/" + kSepModelRelPath;
     if (!QFileInfo::exists(model)) {
         emit jobDone(false, QStringLiteral("找不到人声分离模型：%1").arg(model));
         return;
     }
-    VocalSeparator sep;
-    sep.setInstrumental(instrumental);
-    QString err;
-    if (!sep.setup(model, &err)) {
-        emit jobDone(false, err);
-        return;
-    }
-    // MDX 工作点锁 44.1k 立体声，输出保持兜底规格——本工作包有意不改此路径（spec §2）
-    runJob(inPath, sep, instrumental ? kSuffixInstrumental : kSuffixVocals,
-           instrumental ? QStringLiteral("伴奏提取完成") : QStringLiteral("人声分离完成"),
-           kCanonicalRate, kCanonicalChannels);
+    QJsonObject req;
+    req.insert(QStringLiteral("cmd"), QStringLiteral("separate"));
+    req.insert(QStringLiteral("input"), inPath);
+    req.insert(QStringLiteral("model"), model);
+    req.insert(QStringLiteral("stem"), instrumental ? QStringLiteral("instrumental")
+                                                    : QStringLiteral("vocals"));
+    // MDX 工作点锁 44.1k 立体声，输出锁兜底规格（spec §2 有意保留）；双 stem 后缀/文案由 instrumental 决定
+    runRequest(req, instrumental ? QStringLiteral("伴奏提取完成") : QStringLiteral("人声分离完成"));
 }
 
 void FFExtractor::doExtractAudio(const QString& inPath) {
-    QString err;
-    QString out = extractAudio(inPath, &err, [this](int pct) { emit progress(pct); }, cancelFlag);
-    if (out.isEmpty()) emit jobDone(false, err);
-    else emit jobDone(true, QStringLiteral("音轨提取完成：%1").arg(out));
+    QJsonObject req;
+    req.insert(QStringLiteral("cmd"), QStringLiteral("extractAudio"));
+    req.insert(QStringLiteral("input"), inPath);// 不传 output：缺省自动命名与现状同规则（底座源目录后缀规则）
+    runRequest(req, QStringLiteral("音轨提取完成"));
 }
 
 void FFExtractor::doExtractVideo(const QString& inPath) {
-    QString err;
-    QString out = extractVideo(inPath, &err, [this](int pct) { emit progress(pct); }, cancelFlag);
-    if (out.isEmpty()) emit jobDone(false, err);
-    else emit jobDone(true, QStringLiteral("无声视频提取完成：%1").arg(out));
+    QJsonObject req;
+    req.insert(QStringLiteral("cmd"), QStringLiteral("extractVideo"));
+    req.insert(QStringLiteral("input"), inPath);// 不传 output：缺省自动命名与现状同规则
+    runRequest(req, QStringLiteral("无声视频提取完成"));
 }

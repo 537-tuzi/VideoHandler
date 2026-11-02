@@ -1,38 +1,46 @@
-case,round-1,说明
-CMD-001,PASS,probe 双流 mp4 结构断言：container=MOV、durationSec≈3、streams[0] video/h264/320x240、streams[1] audio/aac/44100Hz/1ch
-CMD-002,PASS,transcode 44.1k 源：sourceSpec=44100/2、outputSpec=44100/2/pcm_f32le、engineResampled=false、frames=220500、durationSec=5
-CMD-002f,PASS,CMD-002 ffprobe 交叉验证实际文件 pcm_f32le,44100,2（防「报告规格与实际文件不符」）
-CMD-003,PASS,transcode 48k 源：outputSpec 跟随源 48000/2、engineResampled=false（PAR-SR 行为可观测化）
-CMD-003f,PASS,CMD-003 ffprobe 交叉验证 pcm_f32le,48000,2
-CMD-004,PASS,denoise 48k 源：outputSpec 48000/2 跟随源、engineResampled=false
-CMD-004f,PASS,CMD-004 ffprobe 交叉验证 pcm_f32le,48000,2
-CMD-005,PASS,denoise 参数贯通正例：humBase=60 + wind=false（44.1k 源）
-CMD-006,PASS,aiDenoise 48k 源：engineResampled=true + 输出锁兜底 44.1k/2 + durationSec≈4.992（(N//hop)·hop 约定）
-CMD-006f,PASS,CMD-006 ffprobe 交叉验证 pcm_f32le,44100,2
-CMD-007,PASS,pitch semi=2.0：输出跟随源 44100/2、durationSec=5（时长不变）
-CMD-007f,PASS,CMD-007 ffprobe 交叉验证 pcm_f32le,44100,2
-CMD-008,PASS,separate stem=vocals 48k 源：engineResampled=true + 输出 44.1k/2（MDX 工作点）
-CMD-009,PASS,separate stem=instrumental：ok + 输出锁 44.1k
-CMD-010,PASS,extractAudio 缺省落源目录：<dir>/tiny_audio.m4a 且文件存在
-CMD-011,PASS,extractVideo 缺省落源目录：<dir>/tiny_mute.mp4 且文件存在
-CMD-012,PASS,确定性：同请求 transcode 两遍输出 cmp 逐字节一致
-CMD-020,PASS,负例·非法 JSON：恒出合法 JSON、E_PARAMS、exit 1、无 result
-CMD-021,PASS,负例·未知 cmd：E_PARAMS 且响应不回显 cmd
-CMD-021r,PASS,响应键序/Compact 确定性：未知 cmd 响应原文逐字节等于期望串
-CMD-022,PASS,负例·未知字段（bogus）：E_PARAMS「未知字段：bogus」
-CMD-023,PASS,负例·缺 input：E_PARAMS
-CMD-024,PASS,负例·类型错 semi:"abc"：E_PARAMS「必须是数字」
-CMD-025,PASS,负例·semi=15 越界：E_PARAMS
-CMD-026,PASS,负例·semi=0：E_PARAMS（OQ-1 对齐 GUI 拒绝）
-CMD-027,PASS,负例·humBase:"61"：E_PARAMS
-CMD-028,PASS,负例·humBase=off+wind=false：E_PARAMS（对齐 GUI 拒绝逻辑）
-CMD-029,PASS,负例·input 不存在：E_FILE（打不开文件）
-CMD-030,PASS,负例·无音频流 mp4：E_FILE（文件里没有音频流）
-CMD-031,PASS,负例·模型缺失：E_MODEL（找不到模型）
-CMD-032,PASS,负例·坏模型（维度错位 v2，命名满足 GTCRN 契约）：E_ENGINE（推理期 lastError）
-CMD-032f,PASS,CMD-032 无半成品残留（失败删半成品，NFR-R1）
-CMD-033,PASS,负例·output==input：E_PARAMS（原件只读防线）
-CMD-033i,PASS,CMD-033 输入文件逐字节未动（防误写原件）
-CMD-034,PASS,负例·v=2：E_PARAMS（v 仅接受 1，OQ-3）
-CMD-035,PASS,负例·NaN 半音数（薄壳 argv 面，审查 P2-1）：toDouble("nan") ok=true 须被否定式范围校验拦下；FAIL 文案 + 无半成品
-CMD-EQV,PASS,薄壳等价（D7 回归面零改动实证）：基线 4657ccd worktree vs 新薄壳，16/16（12 成功形态含 48k/缺省模型 + 4 失败路径）stdout 逐字一致 + 退出码一致 + 产物 cmp 逐字节一致；另有 ci-smoke w1–w7 + PAR-SR 三调用点交叉引用（薄壳路由经命令层，既有门禁即回归网）
+case,round-1,round-2,说明
+CMD-001,PASS,PASS（ci-smoke）,probe 双流 mp4 结构断言：container=MOV、durationSec≈3、streams[0] video/h264/320x240、streams[1] audio/aac/44100Hz/1ch
+CMD-002,PASS,PASS（ci-smoke）,transcode 44.1k 源：sourceSpec=44100/2、outputSpec=44100/2/pcm_f32le、engineResampled=false、frames=220500、durationSec=5
+CMD-002f,PASS,PASS（ci-smoke）,CMD-002 ffprobe 交叉验证实际文件 pcm_f32le,44100,2（防「报告规格与实际文件不符」）
+CMD-003,PASS,PASS（ci-smoke）,transcode 48k 源：outputSpec 跟随源 48000/2、engineResampled=false（PAR-SR 行为可观测化）
+CMD-003f,PASS,PASS（ci-smoke）,CMD-003 ffprobe 交叉验证 pcm_f32le,48000,2
+CMD-004,PASS,PASS（ci-smoke）,denoise 48k 源：outputSpec 48000/2 跟随源、engineResampled=false
+CMD-004f,PASS,PASS（ci-smoke）,CMD-004 ffprobe 交叉验证 pcm_f32le,48000,2
+CMD-005,PASS,PASS（ci-smoke）,denoise 参数贯通正例：humBase=60 + wind=false（44.1k 源）
+CMD-006,PASS,PASS（ci-smoke）,aiDenoise 48k 源：engineResampled=true + 输出锁兜底 44.1k/2 + durationSec≈4.992（(N//hop)·hop 约定）
+CMD-006f,PASS,PASS（ci-smoke）,CMD-006 ffprobe 交叉验证 pcm_f32le,44100,2
+CMD-007,PASS,PASS（ci-smoke）,pitch semi=2.0：输出跟随源 44100/2、durationSec=5（时长不变）
+CMD-007f,PASS,PASS（ci-smoke）,CMD-007 ffprobe 交叉验证 pcm_f32le,44100,2
+CMD-008,PASS,PASS（ci-smoke）,separate stem=vocals 48k 源：engineResampled=true + 输出 44.1k/2（MDX 工作点）
+CMD-009,PASS,PASS（ci-smoke）,separate stem=instrumental：ok + 输出锁 44.1k
+CMD-010,PASS,PASS（ci-smoke）,extractAudio 缺省落源目录：<dir>/tiny_audio.m4a 且文件存在
+CMD-011,PASS,PASS（ci-smoke）,extractVideo 缺省落源目录：<dir>/tiny_mute.mp4 且文件存在
+CMD-012,PASS,PASS（ci-smoke）,确定性：同请求 transcode 两遍输出 cmp 逐字节一致
+CMD-020,PASS,PASS（ci-smoke）,负例·非法 JSON：恒出合法 JSON、E_PARAMS、exit 1、无 result
+CMD-021,PASS,PASS（ci-smoke）,负例·未知 cmd：E_PARAMS 且响应不回显 cmd
+CMD-021r,PASS,PASS（ci-smoke）,响应键序/Compact 确定性：未知 cmd 响应原文逐字节等于期望串
+CMD-022,PASS,PASS（ci-smoke）,负例·未知字段（bogus）：E_PARAMS「未知字段：bogus」
+CMD-023,PASS,PASS（ci-smoke）,负例·缺 input：E_PARAMS
+CMD-024,PASS,PASS（ci-smoke）,负例·类型错 semi:"abc"：E_PARAMS「必须是数字」
+CMD-025,PASS,PASS（ci-smoke）,负例·semi=15 越界：E_PARAMS
+CMD-026,PASS,PASS（ci-smoke）,负例·semi=0：E_PARAMS（OQ-1 对齐 GUI 拒绝）
+CMD-027,PASS,PASS（ci-smoke）,负例·humBase:"61"：E_PARAMS
+CMD-028,PASS,PASS（ci-smoke）,负例·humBase=off+wind=false：E_PARAMS（对齐 GUI 拒绝逻辑）
+CMD-029,PASS,PASS（ci-smoke）,负例·input 不存在：E_FILE（打不开文件）
+CMD-030,PASS,PASS（ci-smoke）,负例·无音频流 mp4：E_FILE（文件里没有音频流）
+CMD-031,PASS,PASS（ci-smoke）,负例·模型缺失：E_MODEL（找不到模型）
+CMD-032,PASS,PASS（ci-smoke）,负例·坏模型（维度错位 v2，命名满足 GTCRN 契约）：E_ENGINE（推理期 lastError）
+CMD-032f,PASS,PASS（ci-smoke）,CMD-032 无半成品残留（失败删半成品，NFR-R1）
+CMD-033,PASS,PASS（ci-smoke）,负例·output==input：E_PARAMS（原件只读防线）
+CMD-033i,PASS,PASS（ci-smoke）,CMD-033 输入文件逐字节未动（防误写原件）
+CMD-034,PASS,PASS（ci-smoke）,负例·v=2：E_PARAMS（v 仅接受 1，OQ-3）
+CMD-035,PASS,PASS（ci-smoke）,负例·NaN 半音数（薄壳 argv 面，审查 P2-1）：toDouble("nan") ok=true 须被否定式范围校验拦下；FAIL 文案 + 无半成品
+CMD-EQV,PASS,PASS（沿 round-1）,薄壳等价（D7 回归面零改动实证）：基线 4657ccd worktree vs 新薄壳，16/16（12 成功形态含 48k/缺省模型 + 4 失败路径）stdout 逐字一致 + 退出码一致 + 产物 cmp 逐字节一致；另有 ci-smoke w1–w7 + PAR-SR 三调用点交叉引用（薄壳路由经命令层，既有门禁即回归网）。round-2 未重跑薄壳（main.cpp/commandlayer 零改动，等价沿用 round-1；thinshell 不随 ci-smoke 跑，标注勘误见 round-2b）
+GUI-EQV,—,PASS,片 D 槽级等价（gui-slot-eqv.sh，基线 fd7badb 双树探针）：nomodel 15 槽次 + withmodel 16 槽次转录（成功/失败/缺模型/取消/probe 文案 + 进度序列）归一化逐字一致
+GUI-CXL,—,PASS,「已取消」经 E_CANCELLED message 直通 jobDone（denoise/extract 双路运行时实证，mainwidget:229 特判字符串逐字命中）+ 取消无半成品残留
+GUI-BADM,—,PASS,坏模型经 GUI ai 槽（round-2b 对抗增补）：双树 mismatch 模型置 appDir 解析位，ai 槽两侧 ok=0 + 三行 ORT 推理失败文案经 E_ENGINE message 直通逐字一致 + 无半成品（同场 6 产物 cmp 一致）
+GUI-PRD,—,PASS,产物 8 件 cmp 逐字节一致（含 48k 跟随源、AI/MDX 推理输出逐位复现）
+GUI-SMOKE,—,PASS,offscreen GUI 冒烟（无参数分支）存活 6s，无 connect/QMetaType/队列投递告警；唯一 stderr 条目经基线对照证实为 offscreen 平台固有（propagateSizeHints）
+GUI-CI,—,PASS,ci-smoke 全量不回归：parity 四族 + 分块不变性 + FFT + CLI 冒烟 + 体检 + run-json 36 条全绿；构建零警告
+GUI-DIFF,—,PASS,改动范围断言：git diff --stat fd7badb -- src/ 仅 ffextractor.{h,cpp}；mediaservice/mainwidget/commandlayer/引擎零改动，信号与槽签名不变
+GUI-WIN,—,PENDING,Windows 真机 GUI 交互验收（按钮→队列投递→worker 线程→弹窗/取消时序）：随 WP-1.0 round-4 或本包 Windows 轮

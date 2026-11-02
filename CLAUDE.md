@@ -27,7 +27,7 @@ VideoHandler — Qt6 Widgets + FFmpeg + ONNX Runtime 的音频处理桌面软件
   video_handler --sep-instrumental <in> <out.wav> [model.onnx]
   ```
   另有 `--extract-audio <in>` / `--extract-video <in>`（FFExtractor 流复制，输出到源目录）；argc≥3 即进 CLI，无参数启动 GUI。
-- **FR-24 无头命令面**：`video_handler --json`（请求从 stdin 读 UTF-8 JSON，stdout 恒回单个 JSON 文档；动词 transcode/denoise/aiDenoise/pitch/separate/probe/extractAudio/extractVideo，schema/错误码/结果对象契约见 `docs/spec/fr24-command-layer.md`）；上面 7 个旧动词是同一核心（`CommandLayer::execute`）的兼容薄壳，验收 `docs/acceptance/fr24-command-layer/`（CMD-* 用例随 ci-smoke 跑）。
+- **FR-24 无头命令面**：`video_handler --json`（请求从 stdin 读 UTF-8 JSON，stdout 恒回单个 JSON 文档；动词 transcode/denoise/aiDenoise/pitch/separate/probe/extractAudio/extractVideo，schema/错误码/结果对象契约见 `docs/spec/fr24-command-layer.md`）；上面 7 个旧动词与 GUI 七槽（片 D）是同一核心（`CommandLayer::execute`）的薄壳，验收 `docs/acceptance/fr24-command-layer/`（CMD-*/GUI-* 用例，CMD-* 随 ci-smoke 跑）。
 - 暂无单测框架；引擎正确性验收 = parity 测试（对照官方实现，−60dB RMS 准入，NFR-Q1，WP-1.1 已建）：随 ci-smoke 跑（`docs/acceptance/engine-parity/scripts/run_parity.sh`），缺 Python 参考依赖的族整族 SKIP、`PARITY_REQUIRED=1` 时升级 FAIL；换参考实现版本后 `gen_golden.py --force` 重生成金样本。
 
 ## 架构（现状）
@@ -37,8 +37,8 @@ main.cpp            CLI 分支（argc>=3）或 GUI；GUI 为组合根（MediaSer
 view/mainwidget     唯一窗口；信号槽转发
 service/mediaservice QThread worker 调度 + busy 锁 + 取消原子量（一次一任务）
 service/commandlayer FR-24 无头命令层：execute(QJsonObject,Ctx)→QJsonObject 纯函数（8 处理器/9 动词形态 + 严格校验 + 六类错误码 E_*）；--json 走 stdin/stdout 单 JSON 文档；旧 7 动词是其薄壳；注册表（NFR-M1）的宿主与缝
-service/ffextractor  任务执行者；静态核心供 CLI 复用（片 D 后七槽改调 CommandLayer::execute）
-service/fftranscoder 唯一转码通路：解码 → swr 到引擎规格 → 引擎 → swr 回 44.1k → WAV(f32)
+service/ffextractor  提取/探测静态核心（probeInfo/extract*）供命令层复用；GUI worker 槽为壳——组 JSON 请求走 CommandLayer::execute（FR-24 片 D），GUI 文案逐字不变
+service/fftranscoder 唯一转码通路：解码 → swr 到引擎规格 → 引擎 → swr 回源规格（跟随源）→ WAV(f32)
 service/ 引擎        全部实现 IStreamEngine { inRate / inChannels / process / flush }
   dspdenoiser        RBJ biquad 陷波(50/60Hz×3 可选，HumBase) + 高通，无内部缓冲
   aidenoiser         GTCRN 流式（16k 单声道；STFT/WOLA 自实现；ORT 用 PIMPL 隔离）

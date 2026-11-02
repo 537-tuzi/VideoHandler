@@ -1,12 +1,12 @@
 #pragma once
 
+#include <QJsonObject>
 #include <QList>
 #include <QObject>
 #include <QString>
 #include <atomic>
 #include <functional>
 
-class IStreamEngine;
 enum class HumBase;// hum 基频制式（定义在 dspdenoiser.h，槽参数用）
 
 // 结构化探测结果：probeText（GUI 中文渲染）与命令层 JSON result 各取所需，单一 FFmpeg 遍历实现
@@ -25,7 +25,8 @@ struct ProbeInfo {
     QList<ProbeStream> streams;
 };
 
-// FFmpeg 任务执行者：分离/转码/降噪的静态核心供 CLI 复用，slots 供后台线程调度
+// FFmpeg 任务执行者：提取/探测静态核心供命令层复用，slots 为 GUI worker 壳——组 JSON 请求走
+// CommandLayer::execute（FR-24 片 D），取消/进度经 Ctx 注入，响应拆包重建 GUI 文案（逐字不变）
 class FFExtractor : public QObject
 {
     Q_OBJECT
@@ -42,9 +43,8 @@ public:
                                 const std::atomic<bool>* cancel = nullptr,
                                 const QString& outPath = {});// 提取无声视频；outPath 空 = 源目录自动命名
 private:
-    void runJob(const QString& inPath, IStreamEngine& engine, const char* suffix, const QString& okMsg,
-                int outRate = 0, int outChannels = 0);// 统一流式引擎任务收尾；输出规格 0=跟随源
-    std::atomic<bool>* cancelFlag = nullptr;// 服务装配的取消标志，转码分块循环检查
+    void runRequest(const QJsonObject& req, const QString& okMsg);// 统一命令层收尾：请求交 execute（取消/进度经 Ctx 注入），响应拆包 → jobDone（成功文案由壳重建，spec D6）
+    std::atomic<bool>* cancelFlag = nullptr;// 服务装配的取消标志，经 Ctx 透传给命令层分块循环检查
 signals:
     void progress(int pct);// 任务进度百分比
     void jobDone(bool ok, const QString& message);// 任务完成通知
