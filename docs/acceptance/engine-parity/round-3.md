@@ -83,3 +83,7 @@ DUT=engine_test 块 4096；金样本=normalize 旁路+域重建版（gen_golden.
 ## 7. 子代理对抗式审查闭环（vocalseparator.cpp）
 
 工作流 wf_61e41dd3（3 维度 × 验证，共 11 代理，审 round-3a 时代 diff）：**0 confirmed / 3 killed / 1 uncertain**。唯一存活 P1（runModel 失败后 specCount 残留 dimT → 后续 process() 越界写 tensor）——主线程在最终块级化代码上复核：specCount 成员已删除；失败-重试路径幂等安全（runChunk 失败发生在块级 OLA 累计之前，环形仅被零扩展，inQ 未裁剪，重试同坐标整块重跑），判定**失效关闭**。killed 三条（多块结构性偏差/根目录过期 wav/占位汇总）均已被块级化与清理动作消除或经反驳排除。
+
+## 8. 独立验收（子代理，HEAD=4deb765，全绿 18/18）
+
+提交后另派测试验收子代理做全量独立验收（全新构建零警告零错误）：PAR-DS 4/4（hum50 按分级判据复现 float32 同构参考 −50.9dB，且四素材 DUT 输出与 round-1 存档**逐字节一致**——DSP 零回归）；PAR-GT 主用例 −123.9dB/边界组全过/零输出约定一致/分块不变四块型逐字节；PAR-MD 8/8（数字与 §4 表逐项吻合）；ci-smoke 全绿；**RSS 抽查 120s sep-voc 峰值 1.48GiB**（NFR-P4 ≤2GB 满足，块级环形管线内存有界实证；块 977 输出与 4096 逐字节一致）。树一致性核验通过。round-3 关闭。

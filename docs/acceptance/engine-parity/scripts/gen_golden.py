@@ -2,15 +2,18 @@
 """WP-1.1 金样本生成：调参考实现产 golden f32，哈希登记 fixtures.json。
 
 子命令：
-  dsp  <素材名...>          scipy 双精度 RBJ 级联（与 DspDenoiser 同参：50/100/150Hz Q30 陷波
-                            + 100Hz Q0.7071 高通 @44.1k），系数保持 double（DUT 侧 float 存储，
-                            差异量级正是本组用例要量的）
-  gtcrn <素材名...>         sherpa-onnx 同模型 speech-enhancement（装好后启用）
+  dsp  <素材名...>          scipy RBJ 级联（与 DspDenoiser 同参：50/100/150Hz Q30 陷波
+                            + 100Hz Q0.7071 高通 @44.1k），双精度主参考 + float32 同构参考
+                            （系数/信号均 f32，lfilter f32 累加——hum50 分级判据用，round-1 §2）
+  gtcrn <素材名...>         sherpa-onnx OfflineSpeechDenoiser 同模型推理（16k 单声道裸流直入，
+                            num_threads=1 与引擎一致；round-3 实锤输出 = (N//hop)·hop 裁头对齐）
   mdx  <素材名...>          audio-separator 0.47.0 官方管线（UVR-MDX-NET-Voc_FT，torch cpu），
                             拦截 write_audio 抓模型原始输出；同时旁路前置 normalize（peak>0.9
                             工作点偏移非引擎差异）并把 ×peak 增益除回引擎域，每次产
                             mdx-voc / mdx-inst 两金样本（round-3 判据）
-用法：gen_golden.py <子命令> <素材名...> [--check]；素材须先由 gen_inputs.py 生成。
+已存在且哈希与 fixtures.json 登记一致的金样本默认复用（--force 强制重生成——换参考
+实现版本后用，重生成后新哈希自动登记）。
+用法：gen_golden.py <子命令> <素材名...> [--check|--force]；素材须先由 gen_inputs.py 生成。
 依赖：test/pydeps 定向安装（绕 diffq：py3.14 无 wheel 且 MDX 路径不用它），见 requirements.txt。
 """
 import hashlib
@@ -23,10 +26,20 @@ import numpy as np
 OUT = Path(__file__).resolve().parents[4] / 'test' / 'parity'
 MDX_MODEL_DIR = Path(__file__).resolve().parents[4] / 'third_party' / 'models' / 'separator'
 MDX_MODEL = 'UVR-MDX-NET-Voc_FT.onnx'
+GTCRN_MODEL = Path(__file__).resolve().parents[4] / 'third_party' / 'models' / 'denoiser' / 'gtcrn_simple.onnx'
+
+FORCE = '--force' in sys.argv
 
 
 def fixtures() -> dict:
     return json.loads((OUT / 'fixtures.json').read_text())
+
+
+def golden_ok(name: str, stem: str) -> bool:
+    """金样本在位且哈希与 fixtures 登记一致（可复用）。"""
+    p = OUT / f'{name}.{stem}.golden.f32'
+    return (not FORCE and p.is_file()
+            and fixtures().get(name, {}).get(f'golden_{stem}') == hashlib.sha256(p.read_bytes()).hexdigest())
 
 
 def save_golden(name: str, stem: str, arr: np.ndarray):
@@ -62,14 +75,41 @@ def do_dsp(names):
         bs.append(rbj_notch(50.0 * h, 30.0, sr))
     hp = rbj_highpass(100.0, 0.7071, sr)
     for name in names:
-        x = np.fromfile(OUT / f'{name}.f32', dtype='<f4').reshape(-1, 2).astype(np.float64)
-        y = np.empty_like(x)
+        x64 = np.fromfile(OUT / f'{name}.f32', dtype='<f4').reshape(-1, 2).astype(np.float64)
+        y = np.empty_like(x64)
+        y32 = np.empty_like(x64)
         for ch in range(2):
-            v = x[:, ch]
+            v = x64[:, ch]
             for b, a in bs:  # 三级陷波级联
                 v = lfilter(b, a, v)
             y[:, ch] = lfilter(hp[0], hp[1], v)
+            # float32 同构参考：系数与信号均 f32、lfilter f32 累加——DUT 引擎同精度路径
+            #（round-1 实锤：hum50 陷波深度被 float32 系数量化限制在 −26.7dB 理论上限，
+            #  vs double 只剩 −15.9dB 属引擎固有精度而非实现 bug，故 hum50 用此参考分级判据）
+            v32 = x64[:, ch].astype(np.float32)
+            for b, a in bs:
+                v32 = lfilter(b.astype('<f4'), a.astype('<f4'), v32)
+            y32[:, ch] = lfilter(hp[0].astype('<f4'), hp[1].astype('<f4'), v32)
         save_golden(name, 'dsp', y)
+        save_golden(name, 'dspf', y32)
+
+
+def do_gtcrn(names):
+    import sherpa_onnx
+    den = None# 惰性建：全部素材复用时免加载模型
+    for name in names:
+        if golden_ok(name, 'gtcrn.sherpa'):
+            print(f'{name}.gtcrn.sherpa.golden.f32: 复用（哈希与登记一致）')
+            continue
+        if den is None:
+            cfg = sherpa_onnx.OfflineSpeechDenoiserConfig(
+                model=sherpa_onnx.OfflineSpeechDenoiserModelConfig(
+                    gtcrn=sherpa_onnx.OfflineSpeechDenoiserGtcrnModelConfig(model=str(GTCRN_MODEL)),
+                    num_threads=1))# 单线程与引擎 setup 一致（确定性）
+            den = sherpa_onnx.OfflineSpeechDenoiser(cfg)
+        x = np.fromfile(OUT / f'{name}.f32', dtype='<f4')
+        y = np.asarray(den.run(x, 16000).samples, dtype='<f4')
+        save_golden(name, 'gtcrn.sherpa', y)
 
 
 def do_mdx(names):
@@ -95,9 +135,14 @@ def do_mdx(names):
     orig = CommonSeparator.write_audio
     CommonSeparator.write_audio = capture
     try:
-        sep = Separator(log_level=logging.ERROR, model_file_dir=str(MDX_MODEL_DIR))
-        sep.load_model(model_filename=MDX_MODEL)
+        sep = None# 惰性建：全部素材复用时免加载 torch/模型（秒级 vs 分钟级）
         for name in names:
+            if golden_ok(name, 'mdx-voc') and golden_ok(name, 'mdx-inst'):
+                print(f'{name}: 复用（mdx-voc/mdx-inst 哈希与登记一致）')
+                continue
+            if sep is None:
+                sep = Separator(log_level=logging.ERROR, model_file_dir=str(MDX_MODEL_DIR))
+                sep.load_model(model_filename=MDX_MODEL)
             caps.clear()
             sep.separate(str(OUT / f'{name}.wav'))
             assert len(caps) == 2, f'{name}: 期望双 stem，实得 {len(caps)}'
@@ -127,7 +172,7 @@ def do_mdx(names):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if a != '--check']
+    args = [a for a in sys.argv[1:] if a not in ('--check', '--force')]
     check = '--check' in sys.argv
     if len(args) < 2:
         sys.exit(__doc__)
@@ -137,7 +182,7 @@ def main():
     if check:
         print(f'CHECK OK: {cmd} × {names}')
         return
-    {'dsp': do_dsp, 'mdx': do_mdx}[cmd](names)
+    {'dsp': do_dsp, 'gtcrn': do_gtcrn, 'mdx': do_mdx}[cmd](names)
 
 
 if __name__ == '__main__':

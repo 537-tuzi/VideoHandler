@@ -167,7 +167,7 @@
 
 ### 5.3 质量（引擎准入线）
 
-- **NFR-Q1**：每个推理引擎对官方参考实现 parity ≤ −60dB RMS（GTCRN↔sherpa-onnx；MDX↔audio-separator；DFN3↔官方 Rust runtime；RVC↔官方推理；ASR↔whisper.cpp 参考输出）。**不过不上线。**
+- **NFR-Q1**：每个推理引擎对官方参考实现 parity ≤ −60dB RMS（GTCRN↔sherpa-onnx；MDX↔audio-separator；DFN3↔官方 Rust runtime；RVC↔官方推理；ASR↔whisper.cpp 参考输出）。**不过不上线。**（GTCRN/MDX/DSP/变调已落地并进 CI 门禁：WP-1.1，`docs/acceptance/engine-parity/`，2026-11-02；其余引擎随各自工作包落地时同标准接入）
 - **NFR-Q2**：DSP 降噪在 200Hz–20kHz 通带内 |H| 波动 ≤±0.1dB。
 - **NFR-Q3**：视频源 48kHz 全程不经过 44.1k 往返（canonical 改 48k 可配置；修正现有 `data.h` 的 44100）。
 - **NFR-Q4**：浮点内部链，导出可选 limiter/normalize，保证无削波。

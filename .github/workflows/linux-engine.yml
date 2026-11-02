@@ -22,11 +22,26 @@ jobs:
         with:
           path: third_party
           key: third-party-${{ hashFiles('scripts/fetch-deps.sh') }}
+      - name: pip 缓存（parity 参考实现依赖，torch 级包体量大）
+        uses: actions/cache@v4
+        with:
+          path: ~/.pipcache
+          key: parity-pip-${{ hashFiles('docs/acceptance/engine-parity/scripts/requirements.txt') }}
       - name: 依赖获取（ORT 1.30.0 + 两模型）
         run: ./scripts/fetch-deps.sh
+      - name: Python 参考实现依赖（WP-1.1 parity；venv 免 PEP668，配方=engine-parity/scripts/requirements.txt）
+        run: |
+          python3 -m venv .venv-parity
+          PIP=".venv-parity/bin/pip install --cache-dir ~/.pipcache"
+          $PIP numpy==2.5.4 scipy==1.18.1 sherpa-onnx==1.13.8 soundfile
+          $PIP --no-deps audio-separator==0.47.0 onnx2torch-py313
+          $PIP tqdm requests pyyaml audioread librosa onnx onnxruntime six pydub resampy samplerate einops beartype
+          $PIP --index-url https://download.pytorch.org/whl/cpu torch==2.14.1 torchvision==0.29.1
       - name: 配置 + 构建（linux-test）
         run: |
           cmake --preset linux-test
           cmake --build --preset linux-test
-      - name: 引擎回归（分块不变性 + FFT 属性 + CLI 冒烟 + ffprobe）
-        run: bash docs/acceptance/wp-1.2-linux-build/scripts/ci-smoke.sh
+      - name: 引擎回归（分块不变性 + FFT 属性 + parity + CLI 冒烟 + ffprobe）
+        run: |
+          echo "$PWD/.venv-parity/bin" >> "$GITHUB_PATH"
+          PARITY_REQUIRED=1 bash docs/acceptance/wp-1.2-linux-build/scripts/ci-smoke.sh

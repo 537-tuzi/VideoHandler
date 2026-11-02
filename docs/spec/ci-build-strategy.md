@@ -49,6 +49,19 @@ engine_test    可执行（仅非 WIN32/测试构建）：headless 驱动 libeng
 | GTCRN 模型 | gtcrn_simple.onnx | sherpa-onnx release | SHA256 `e77603ac0c23dac3227dd2d7135b3a585cbee2679048aecfa886657d3ae1b534`；O1 已关闭 |
 | MDX 模型 | UVR-MDX-NET-Voc_FT.onnx | hf-mirror / HF | SHA256 `534b2070fcc7df514b13ef660dc8cbb328679c2374d04354a5c42bb14ecce111`；标注来源（NFR-C2） |
 
+**parity 参考实现（WP-1.1 SG-6，2026-11-02 锁定；本机实跑版本，CI venv 同款 pin）**：
+
+| 依赖 | 版本 | 用途 | 备注 |
+|---|---|---|---|
+| numpy | 2.5.4 | 素材合成/比较器/FFT 对照 | 本机 ~/.local；CI venv pin 同版 |
+| scipy | 1.18.1 | PAR-DS 双精度 + float32 同构参考 | |
+| sherpa-onnx | 1.13.8 | PAR-GT 金样本（OfflineSpeechDenoiser，num_threads=1） | |
+| audio-separator | 0.47.0 | PAR-MD 金样本（官方管线） | wheel SHA256 `756f3b62…bfd9a8`（全量见 engine-parity/scripts/requirements.txt 注释）；py3.14 须 --no-deps 绕 diffq，CI venv 同法 |
+| torch / torchvision | 2.14.1+cpu / 0.29.1+cpu | audio-separator 推理后端 | CPU 源（download.pytorch.org/whl/cpu） |
+| onnxruntime(python) | 1.31.0 | audio-separator 依赖 | 与 C++ 侧 ORT 1.30.0 独立（python 侧仅参考管线用） |
+
+环境重建配方唯一事实源：`docs/acceptance/engine-parity/scripts/requirements.txt`（本机 ~/.local+test/pydeps 双段式）与 `.github/workflows/linux-engine.yml`（CI venv，PARITY_REQUIRED=1）；换参考版本后 `gen_golden.py --force` 重生成金样本并自动登记新哈希。
+
 矩阵是唯一事实源：fetch-deps 脚本、CI、THIRD-PARTY 清单（NFR-C2）都从它生成/对照。
 
 ## 5. FFmpeg 统一（WP-1.7，NFR-C3/R6）

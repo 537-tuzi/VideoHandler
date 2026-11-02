@@ -27,7 +27,7 @@ VideoHandler — Qt6 Widgets + FFmpeg + ONNX Runtime 的音频处理桌面软件
   video_handler --sep-instrumental <in> <out.wav> [model.onnx]
   ```
   另有 `--extract-audio <in>` / `--extract-video <in>`（FFExtractor 流复制，输出到源目录）；argc≥3 即进 CLI，无参数启动 GUI。
-- 暂无单测框架；引擎正确性验收 = parity 测试（对照官方实现，−60dB RMS 准入，NFR-Q1，待建）。
+- 暂无单测框架；引擎正确性验收 = parity 测试（对照官方实现，−60dB RMS 准入，NFR-Q1，WP-1.1 已建）：随 ci-smoke 跑（`docs/acceptance/engine-parity/scripts/run_parity.sh`），缺 Python 参考依赖的族整族 SKIP、`PARITY_REQUIRED=1` 时升级 FAIL；换参考实现版本后 `gen_golden.py --force` 重生成金样本。
 
 ## 架构（现状）
 
@@ -60,7 +60,7 @@ test/fft_test        FFT 性质 DUT（仅非 WIN32；FFT-PR 自检 + numpy 对�
 
 ## 已知 P0 债（改引擎前先读；2026-10 代码审查结论）
 
-1. **无 parity 测试**：GTCRN/MDX 前端为手推实现，须对照 sherpa-onnx / audio-separator 建 golden 测试（NFR-Q1，最高优先）。
+1. **无 parity 测试**——**已修（2026-11-02，WP-1.1）**：四族 parity 全绿并进 ci-smoke 门禁（`engine-parity/scripts/run_parity.sh`；CI 以 `PARITY_REQUIRED=1` 强制，本地缺依赖族降级 SKIP）：GTCRN vs sherpa-onnx −123.9dB（两债修复：反射帧网格 + WOLA÷Σw² + 反射尾帧，输出长度约定 (N//hop)·hop）、MDX vs audio-separator 块级化复刻官方 demix 8/8 机器精度、DSP hum50 float32 同构分级判据、变调谱判据；证据 `docs/acceptance/engine-parity/`（round-1..4 + report.md）。改引擎后必跑 ci-smoke。Windows 随 round-4 真机。
 2. `util/fft.h`：Bluestein 全 float 有精度风险；MDX 对 2 的幂帧也走 Bluestein（慢且亏精度，应直通基-2）；radix-2 无 twiddle 预计算表——**已修（2026-10-18，WP-1.3）**：twiddle double 主表 + 2 的幂直通 + Bluestein 加固（chirp 整数索引查表 / b 序列 init 期 double / 运行期 chirp double 直乘，频域卷积仍 float），FFT-PR 五项全绿（往返最差 −132dB vs −130 门槛、numpy 对照 −137dB 起），512/16k 直通提速 6.5–6.9×；`fft_test` DUT 入 ci-smoke；证据 `docs/acceptance/wp-1.3-fft-rewrite/`。Windows 编译随 round-4。
 3. `vocalseparator` 输出读法与参数双双有错（2026-10-14 调研实锤）——**已修（2026-10-18，WP-1.4）**：plane-major `[1,4,dimF,dimT]` 读法、末 10000KiB MD5 查内置 UVR 官方表取参（nFft=dimF*2 推导废除）、前 3 频点置零、compensate/primary_stem 语义（副 stem = mix − compensate×主 stem，实测 1.02100）、输出契约校验（dtype/shape/布局，负例三分支全中且无残留）；顺修 avail 截断除法假帧越界与 RSS：`DisableCpuMemArena()` 后 120s 峰值 1.48GB（原 2.58GB）过 NFR-P4；另修复 wantSub 公式取反（两 stem 角色曾对调）。数值 parity 对照官方归 WP-1.1；Windows 随 round-4。证据 `docs/acceptance/wp-1.4-separator-contract/`。
 4. `kCanonicalRate=44100` 对视频源（48k）造成两次重采样；canonical 应改 48k 可配置（NFR-Q3）。

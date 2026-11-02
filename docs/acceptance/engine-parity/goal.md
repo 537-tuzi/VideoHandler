@@ -13,7 +13,7 @@ NFR-Q1 落地：五引擎对照官方/独立参考实现的数值 parity 测试�
 | SG-3 GTCRN parity | sherpa-onnx 同模型推理参考 vs aidenoiser（PAR-GT，对齐点=首 hop 吞吐约定） | **round-3 全绿**：主用例 −123.9dB（残差/RMS输入 −156.0）+ 边界组全过。两债修复 = 反射帧网格（center+双侧 reflect）+ WOLA÷Σw² + 反射尾帧（输出长度约定 (N//hop)·hop 与参考一致）；机理修正见 round-3 §6 |
 | SG-4 MDX parity | audio-separator 官方管线 vs vocalseparator（PAR-MD，边界=反射填充） | **round-3 收敛全绿 8/8**：机器精度 −107.6~−145.4dB corr 1.000000。三重归因（normalize 工作点/×peak 域/块级 OLA+块尾 reflect）→ 判据同工作点（gen_golden mdx 旁路+域重建）→ 引擎块级化复刻官方分块（step=195840/块内 reflect/hanning OLA+divider，环形 3MB 有界） |
 | SG-5 变调性质 | pitch(+n)∘pitch(−n) 往返恒等 + 长度一致（PAR-PT，无独立参考） | round-1 全绿（谱判据） |
-| SG-6 接入 CI | parity 套件并入 ci-smoke.sh（依赖 venv 存在时跑）+ 依赖版本锁依赖矩阵 | 待做（SG-3/4 round-3 已双双收敛，闸门解除，下一轮执行） |
+| SG-6 接入 CI | parity 套件并入 ci-smoke.sh + 依赖版本锁依赖矩阵 | **round-4 完成**：run_parity.sh 四族编排（缺依赖族 SKIP / PARITY_REQUIRED=1 升级 FAIL，CI=强制点）+ 金样本哈希复用/反漂移（--force 换版本重生成）+ pitch_check 固化 + workflow venv 同 pin + 版本矩阵入 ci-build-strategy §4；正例全绿 + 负例三连（必判 FAIL/裸机降级/篡改重生成）。**WP-1.1 全 sub goal 收官，report.md 落档** |
 
 FFT 性质五件套（FFT-PR）已在 WP-1.3 落地并入 ci-smoke，不重复建。分块不变性照妖镜已在 WP-1.2 并入 ci-smoke（五引擎），不重复。
 

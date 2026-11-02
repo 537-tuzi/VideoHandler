@@ -15,4 +15,4 @@ PAR-MD-005,PENDING,FAIL,PASS,MDX sep-inst compensate 支路：全 inst 用例 �
 PAR-PT-001,PASS,—,—,变调 +2∘−2 往返：谱判据全过（长度 0 差 / 峰频 0.00 音分 / 杂散抑制 58.8dB / RMS +0.00dB；逐样本残差 −12.9dB 系 WSOLA 相位漂移，非缺陷）
 PAR-PT-002,PASS,—,—,变调分块不变（已并入 ci-smoke，此处记交叉引用）
 FFT-PR-001..005,PASS,—,—,WP-1.3 已落地并入 ci-smoke（交叉引用 wp-1.3-fft-rewrite/matrix.csv）
-回归,——,—,PASS,round-3 统一构建 ci-smoke 全绿（FFT 属性 + 五引擎分块不变 + 7 CLI 动词 + ffprobe 体检；w3 时长断言按 (N//hop)·hop 约定改区间断言）
+回归,——,—,PASS,round-3 统一构建 ci-smoke 全绿（w3 时长断言按 (N//hop)·hop 约定改区间断言）；round-4 ci-smoke 并入 parity 四族 20 判定 3:29 全绿 + 负例三连（PARITY_REQUIRED FAIL/裸机降级 SKIP/篡改金样本自动重生成）

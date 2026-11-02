@@ -47,6 +47,9 @@ invariance ai "$WORK/mo.f32" "$GTCRN"
 invariance sep-voc "$WORK/st.f32" "$UVR"
 invariance sep-inst "$WORK/st.f32" "$UVR"
 
+echo "== parity（WP-1.1 SG-6：四族 vs 参考实现；缺依赖族 SKIP，PARITY_REQUIRED=1 时 SKIP 即 FAIL）=="
+bash docs/acceptance/engine-parity/scripts/run_parity.sh "$BUILD"
+
 echo "== CLI 冒烟（7 动词）=="
 "$VH" --transcode-wav     "$WORK/st.wav" "$WORK/w1.wav"
 "$VH" --denoise-wav       "$WORK/st.wav" "$WORK/w2.wav"

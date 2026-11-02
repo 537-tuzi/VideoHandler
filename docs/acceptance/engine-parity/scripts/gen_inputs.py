@@ -49,6 +49,7 @@ def sine(freq: float, dur: float, sr: int, ch: int) -> np.ndarray:
 # (名字, 采样率, 声道数, 生成器)——边界素材盯 hop 边界：MDX kHop=1024、GTCRN hop=256
 CASES = [
     ('sine1k',    sine(1000, 5.0, SR_ST, 2),   SR_ST, 'sanity'),
+    ('sine440',   sine(440, 5.0, SR_ST, 2),    SR_ST, 'PAR-PT 变调往返靶（round-1 判据口径）'),
     ('white',     white(5.0, SR_ST, 2),        SR_ST, '全频带'),
     ('hum50',     hum(50, 5.0, SR_ST),         SR_ST, 'DSP 50Hz 靶'),
     ('hum60',     hum(60, 5.0, SR_ST),         SR_ST, 'DSP 60Hz 靶（WP-1.6 后）'),
@@ -58,6 +59,12 @@ CASES = [
     ('odd1s',     None,                             SR_ST, '非整 hop 尾·1s（1024*43+123，MDX 用：引擎契约最短 ~0.17s，odd 太短被拒）'),
     ('short',     white(300 / SR_ST, SR_ST, 2), SR_ST, '短于 1 hop（300 样本）'),
     ('multi12s',  white(12.0, SR_ST, 2),       SR_ST, '多 batch（>dimT 帧，MDX 批间衔接）'),
+    # GTCRN 边界组（round-3）：white16mo 前 N 样本前缀（同 seed 同生成器 → 逐字节同前缀）
+    ('bound100',  None, SR_MO, 'GTCRN 边界：短于 hop（零输出约定）'),
+    ('bound255',  None, SR_MO, 'GTCRN 边界：hop−1（零输出约定）'),
+    ('bound256',  None, SR_MO, 'GTCRN 边界：恰一 hop（反射深折叠）'),
+    ('bound1025', None, SR_MO, 'GTCRN 边界：odd 尾（1 hop+1）'),
+    ('bound4097', None, SR_MO, 'GTCRN 边界：odd 尾（16 hop+1）'),
 ]
 
 
@@ -75,6 +82,8 @@ def main():
         if name in ('odd', 'odd1s'):  # 非整 hop：取 white 的前 N 样本
             n = 1024 * 7 + 123 if name == 'odd' else 1024 * 43 + 123
             arr = white(5.0, SR_ST, 2)[:n]
+        elif name.startswith('bound'):  # GTCRN 边界：white16mo（16k 单声道）前 N 样本前缀
+            arr = white(5.0, SR_MO, 1)[:int(name[5:])]
         f32 = OUT / f'{name}.f32'
         wav = OUT / f'{name}.wav'
         arr.tofile(f32)
