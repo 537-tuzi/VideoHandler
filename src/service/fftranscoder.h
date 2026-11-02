@@ -4,6 +4,8 @@
 #include <atomic>
 #include <functional>
 
+#include "errinfo.h"
+
 class IStreamEngine;
 
 // 解码 → 按引擎期望规格重采样 → 流式引擎 → 输出规格 WAV(f32)：唯一转码通路。
@@ -22,9 +24,10 @@ public:
     // 轻量探测音轨规格：avformat 打开读流参数即关，供调用方在引擎 setup 前取源规格；失败回落兜底
     static void probeSourceSpec(const QString& inPath, int* rate, int* channels);
     // outRate/outChannels 传 0（缺省）即输出跟随源；模型锁定工作点的路径（AI/分离）应显式传兜底规格；
-    // outInfo 可选出参（缺省 nullptr 不动现有调用方），成功时回填实际规格与帧数
+    // outInfo 可选出参（缺省 nullptr 不动现有调用方），成功时回填实际规格与帧数；
+    // err 为结构化错误（码在产生点赋值：文件/媒体 I/O 族 File，取消 Cancelled，内存/重采样器 Internal）
     static QString transcodeStreamWav(const QString& inPath, const QString& outPath,
                                       IStreamEngine& engine, const std::atomic<bool>* cancel,
-                                      QString* err, const ProgressFn& onProgress = {},
+                                      ErrInfo* err, const ProgressFn& onProgress = {},
                                       int outRate = 0, int outChannels = 0, OutInfo* outInfo = nullptr);
 };

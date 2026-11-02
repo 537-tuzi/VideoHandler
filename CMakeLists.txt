@@ -20,6 +20,7 @@ add_library(engine STATIC
     src/service/dspdenoiser.cpp
     src/service/engineregistry.h
     src/service/engineregistry.cpp
+    src/service/errinfo.h
     src/service/ffextractor.h
     src/service/ffextractor.cpp
     src/service/fftranscoder.h

@@ -7,6 +7,8 @@
 #include <atomic>
 #include <functional>
 
+#include "errinfo.h"
+
 enum class HumBase;// hum 基频制式（定义在 dspdenoiser.h，槽参数用）
 
 // 结构化探测结果：probeText（GUI 中文渲染）与命令层 JSON result 各取所需，单一 FFmpeg 遍历实现
@@ -36,10 +38,10 @@ public:
     static bool probe(const QString& inPath, QString* info);// 探测文件流信息（中文渲染文本），false 时 info 为错误说明；槽/GUI 兼容面
     static bool probeInfo(const QString& inPath, ProbeInfo* info, QString* err);// 结构化探测，false 时 err 为错误说明
     static QString probeText(const ProbeInfo& info);// 结构化信息 → 现有中文渲染（逐字平移，GUI 展示不变）
-    static QString extractAudio(const QString& inPath, QString* err, const std::function<void(int)>& onProgress = {},
+    static QString extractAudio(const QString& inPath, ErrInfo* err, const std::function<void(int)>& onProgress = {},
                                 const std::atomic<bool>* cancel = nullptr,
                                 const QString& outPath = {});// 提取音轨，成功返回输出路径；outPath 空 = 源目录自动命名
-    static QString extractVideo(const QString& inPath, QString* err, const std::function<void(int)>& onProgress = {},
+    static QString extractVideo(const QString& inPath, ErrInfo* err, const std::function<void(int)>& onProgress = {},
                                 const std::atomic<bool>* cancel = nullptr,
                                 const QString& outPath = {});// 提取无声视频；outPath 空 = 源目录自动命名
 private:

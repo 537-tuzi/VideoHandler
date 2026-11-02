@@ -25,16 +25,35 @@ trap cleanup EXIT
 FAIL=0
 ck() { if [ "$1" = 0 ]; then echo "  PASS $2"; else echo "  FAIL $2"; FAIL=1; fi; }
 
-echo "== worktree（detached @ HEAD + 片 A 基线临时提交，third_party 软链共享）=="
+echo "== worktree（detached @ HEAD + 片 A/B 基线临时提交，third_party 软链共享）=="
 git -C "$REPO" worktree add --detach "$WT" HEAD >/dev/null || { echo "FAIL: worktree add"; exit 1; }
 ln -s "$REPO/third_party" "$WT/third_party"
-# 片 A 四文件拷入并做 detached 提交：REG-001 的 diff 基线 =「片 A 已就位」，
-# 假引擎注入的改动面才可与金标准白名单比对；detached 提交不触 main（无分支引用，用后即弃）
-cp src/service/engineregistry.h src/service/engineregistry.cpp src/service/commandlayer.cpp "$WT/src/service/"
+# 主树已合入的片（A：注册表四文件；B：errinfo/结构化错误通道全套）拷入并做 detached 提交：
+# REG-001 的 diff 基线 =「当前主树状态」，假引擎注入的改动面才可与金标准白名单比对；
+# detached 提交不触 main（无分支引用，用后即弃）。文件清单 = 主树 vs HEAD 的 src/ 差异全集
+# ——完整性断言（审查 P2-1）：清单必须等于「主树 vs HEAD 差异 + untracked src/ 新文件」，
+#    漏拷纯逻辑改动会静默测试旧代码（接口改型类漏拷则构建破裂，此断言兜住其余形态）——
+BASELINE_FILES=$(printf '%s\n' \
+    src/service/errinfo.h src/service/streamengine.h src/service/engineregistry.h \
+    src/service/engineregistry.cpp src/service/commandlayer.cpp src/service/fftranscoder.h \
+    src/service/fftranscoder.cpp src/service/ffextractor.h src/service/ffextractor.cpp \
+    src/service/aidenoiser.h src/service/aidenoiser.cpp src/service/vocalseparator.h \
+    src/service/vocalseparator.cpp src/test/engine_test.cpp CMakeLists.txt | sort)
+DRIFT_FILES=$( { git diff --name-only HEAD -- src/ CMakeLists.txt; git ls-files --others --exclude-standard src/; } | sort)
+if [ "$BASELINE_FILES" != "$DRIFT_FILES" ]; then
+    echo "FAIL: 基线拷贝清单与主树实际漂移不一致（脚本清单过期，纯逻辑改动会被静默漏测）："
+    diff <(echo "$BASELINE_FILES") <(echo "$DRIFT_FILES"); exit 1
+fi
+cp src/service/errinfo.h src/service/streamengine.h src/service/engineregistry.h \
+   src/service/engineregistry.cpp src/service/commandlayer.cpp src/service/fftranscoder.h \
+   src/service/fftranscoder.cpp src/service/ffextractor.h src/service/ffextractor.cpp \
+   src/service/aidenoiser.h src/service/aidenoiser.cpp src/service/vocalseparator.h \
+   src/service/vocalseparator.cpp "$WT/src/service/"
+cp src/test/engine_test.cpp "$WT/src/test/"
 cp CMakeLists.txt "$WT/CMakeLists.txt"
 git -C "$WT" add -A
 git -C "$WT" -c user.name=nfr-m1 -c user.email=nfr-m1@local diff --cached --quiet \
-    || git -C "$WT" -c user.name=nfr-m1 -c user.email=nfr-m1@local commit -q -m "NFR-M1 片 A 基线（临时 detached 提交，验收用后即弃）"
+    || git -C "$WT" -c user.name=nfr-m1 -c user.email=nfr-m1@local commit -q -m "NFR-M1 片 A/B 基线（临时 detached 提交，验收用后即弃）"
 
 # —— 假引擎（~40 行：IStreamEngine 最小形态，参考 dspdenoiser 直通风格）——
 cat > "$WT/src/service/gainengine.h" <<'EOF'
@@ -133,7 +152,7 @@ entry = '''            .create = createSeparate,
             .id = QStringLiteral("gain"),
             .params = {kGainDb, kNote},
             .requiresModel = false,
-            .setupErrorClass = nullptr,
+            .setupErrorClass = ErrCode::None,
             .lockCanonicalOutput = false,
             .outputSuffix = suffixGain,
             .semanticCheck = nullptr,

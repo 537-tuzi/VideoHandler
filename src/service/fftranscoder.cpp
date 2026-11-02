@@ -25,35 +25,35 @@ void normalizeOutSpec(int rate, int channels, int* outRate, int* outChannels) {
 }
 
 // 打开输入、定位音轨并起解码器，失败时已保证释放
-QString open_decoder(const QString& inPath, AVFormatContext** fmt, AVCodecContext** dec, int* streamIdx) {
+ErrInfo open_decoder(const QString& inPath, AVFormatContext** fmt, AVCodecContext** dec, int* streamIdx) {
     int ret = avformat_open_input(fmt, inPath.toUtf8().constData(), nullptr, nullptr);
-    if (ret < 0) return QStringLiteral("打不开文件：%1").arg(ff_err(ret));
+    if (ret < 0) return {ErrCode::File, QStringLiteral("打不开文件：%1").arg(ff_err(ret))};
     ret = avformat_find_stream_info(*fmt, nullptr);
     if (ret < 0) {
         avformat_close_input(fmt);
-        return QStringLiteral("读不到流信息：%1").arg(ff_err(ret));
+        return {ErrCode::File, QStringLiteral("读不到流信息：%1").arg(ff_err(ret))};
     }
     ret = av_find_best_stream(*fmt, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
     if (ret < 0) {
         avformat_close_input(fmt);
-        return QStringLiteral("文件里没有音频流");
+        return {ErrCode::File, QStringLiteral("文件里没有音频流")};
     }
     *streamIdx = ret;
     const AVCodec* codec = avcodec_find_decoder((*fmt)->streams[*streamIdx]->codecpar->codec_id);
     if (!codec) {
         avformat_close_input(fmt);
-        return QStringLiteral("不认识的音频编码");
+        return {ErrCode::File, QStringLiteral("不认识的音频编码")};
     }
     *dec = avcodec_alloc_context3(codec);
     if (!*dec) {
         avformat_close_input(fmt);
-        return QStringLiteral("内存不够");
+        return {ErrCode::Internal, QStringLiteral("内存不够")};
     }
     if (avcodec_parameters_to_context(*dec, (*fmt)->streams[*streamIdx]->codecpar) < 0 ||
         avcodec_open2(*dec, codec, nullptr) < 0) {
         avcodec_free_context(dec);
         avformat_close_input(fmt);
-        return QStringLiteral("解码器起不来");
+        return {ErrCode::File, QStringLiteral("解码器起不来")};
     }
     if ((*dec)->ch_layout.nb_channels <= 0)// 怪文件缺声道描述时按统一声道数猜
         av_channel_layout_default(&(*dec)->ch_layout, kCanonicalChannels);
@@ -61,14 +61,14 @@ QString open_decoder(const QString& inPath, AVFormatContext** fmt, AVCodecContex
 }
 
 // 建 WAV 输出容器并写文件头（规格由调用方给定），失败时已保证释放
-QString open_wav(const QString& outPath, AVFormatContext** out, int outRate, int outChannels) {
+ErrInfo open_wav(const QString& outPath, AVFormatContext** out, int outRate, int outChannels) {
     int ret = avformat_alloc_output_context2(out, nullptr, nullptr, outPath.toUtf8().constData());
-    if (ret < 0) return QStringLiteral("建输出容器失败：%1").arg(ff_err(ret));
+    if (ret < 0) return {ErrCode::File, QStringLiteral("建输出容器失败：%1").arg(ff_err(ret))};
     AVStream* st = avformat_new_stream(*out, nullptr);
     if (!st) {
         avformat_free_context(*out);
         *out = nullptr;
-        return QStringLiteral("建输出流失败");
+        return {ErrCode::File, QStringLiteral("建输出流失败")};
     }
     st->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
     st->codecpar->codec_id = AV_CODEC_ID_PCM_F32LE;
@@ -81,30 +81,31 @@ QString open_wav(const QString& outPath, AVFormatContext** out, int outRate, int
     if (ret < 0) {
         avformat_free_context(*out);
         *out = nullptr;
-        return QStringLiteral("输出文件建不了：%1").arg(ff_err(ret));
+        return {ErrCode::File, QStringLiteral("输出文件建不了：%1").arg(ff_err(ret))};
     }
     ret = avformat_write_header(*out, nullptr);
     if (ret < 0) {
         avio_closep(&(*out)->pb);
         avformat_free_context(*out);
         *out = nullptr;
-        return QStringLiteral("写文件头失败：%1").arg(ff_err(ret));
+        return {ErrCode::File, QStringLiteral("写文件头失败：%1").arg(ff_err(ret))};
     }
     return {};
 }
 
 // 写一段交错 f32 样本进输出容器（声道数随输出规格），pkt 由调用方持有复用
-QString write_samples(const uint8_t* data, int frames, int channels, AVFormatContext* out, int64_t* samplePos, AVPacket* pkt) {
+ErrInfo write_samples(const uint8_t* data, int frames, int channels, AVFormatContext* out, int64_t* samplePos, AVPacket* pkt) {
     if (frames <= 0) return {};
     if (av_new_packet(pkt, frames * channels * static_cast<int>(sizeof(float))) < 0)
-        return QStringLiteral("内存不够");
-    QString e;
+        return {ErrCode::Internal, QStringLiteral("内存不够")};
+    ErrInfo e;
     memcpy(pkt->data, data, static_cast<size_t>(pkt->size));
     pkt->pts = pkt->dts = *samplePos;
     pkt->duration = frames;
     pkt->stream_index = 0;
     pkt->flags |= AV_PKT_FLAG_KEY;
-    if (av_interleaved_write_frame(out, pkt) < 0) e = QStringLiteral("写包失败");
+    if (av_interleaved_write_frame(out, pkt) < 0)
+        e = {ErrCode::File, QStringLiteral("写包失败")};// 输出侧 I/O 失败归 File（OQ-4 承载面修正）
     *samplePos += frames;
     av_packet_unref(pkt);
     return e;
@@ -130,9 +131,9 @@ void FFTranscoder::probeSourceSpec(const QString& inPath, int* rate, int* channe
 
 QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& outPath,
                                          IStreamEngine& engine, const std::atomic<bool>* cancel,
-                                         QString* err, const ProgressFn& onProgress,
+                                         ErrInfo* err, const ProgressFn& onProgress,
                                          int outRate, int outChannels, OutInfo* outInfo) {
-    QString e;
+    ErrInfo e;
     AVFormatContext* in = nullptr;
     AVCodecContext* dec = nullptr;
     AVFormatContext* out = nullptr;
@@ -162,7 +163,7 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
         int ret = swr_alloc_set_opts2(&toAi, &aiLayout, AV_SAMPLE_FMT_FLT, engine.inRate(),
                                       &dec->ch_layout, dec->sample_fmt, dec->sample_rate, 0, nullptr);
         if (ret < 0 || swr_init(toAi) < 0) {
-            e = QStringLiteral("重采样器起不来");
+            e = {ErrCode::Internal, QStringLiteral("重采样器起不来")};
             break;
         }
         if (!bypassOut) {
@@ -171,7 +172,7 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
             ret = swr_alloc_set_opts2(&toOut, &outLayout, AV_SAMPLE_FMT_FLT, outRate,
                                       &aiLayout, AV_SAMPLE_FMT_FLT, engine.inRate(), 0, nullptr);
             if (ret < 0 || swr_init(toOut) < 0) {
-                e = QStringLiteral("重采样器起不来");
+                e = {ErrCode::Internal, QStringLiteral("重采样器起不来")};
                 break;
             }
         }
@@ -181,12 +182,12 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
         AVFrame* frame = av_frame_alloc();
         std::vector<float> aiIn, convIn, convOut, enhanced;
         size_t hPos = 0;
-        if (!pkt || !wpkt || !frame) e = QStringLiteral("内存不够");
+        if (!pkt || !wpkt || !frame) e = {ErrCode::Internal, QStringLiteral("内存不够")};
         else {
             const double estFrames = in->duration > 0 ? in->duration / 1000000.0 * engine.inRate() : 0.0;
             const int chunk = engine.inRate();// 按秒分块送引擎
             int64_t fed = 0;
-            auto drainEnhanced = [&]() -> QString {// 引擎输出 → 直写/回转 → 写盘
+            auto drainEnhanced = [&]() -> ErrInfo {// 引擎输出 → 直写/回转 → 写盘
                 while (enhanced.size() - hPos >= static_cast<size_t>(ch)) {
                     const int n = static_cast<int>(std::min<size_t>((enhanced.size() - hPos) / ch, kFlushFrames));
                     const float* src = enhanced.data() + hPos;
@@ -214,7 +215,7 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
                 hPos = 0;
                 return e;
             };
-            auto feedAi = [&](AVFrame* f) -> QString {// 解码帧 → 引擎期望规格 → 送引擎
+            auto feedAi = [&](AVFrame* f) -> ErrInfo {// 解码帧 → 引擎期望规格 → 送引擎
                 const int maxOut = swr_get_out_samples(toAi, f->nb_samples);
                 if (maxOut <= 0) return {};
                 convIn.resize(static_cast<size_t>(maxOut) * ch);
@@ -227,7 +228,7 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
                     auto aiOut = engine.process(aiIn.data(), static_cast<int64_t>(aiIn.size()) / ch);
                     enhanced.insert(enhanced.end(), aiOut.begin(), aiOut.end());
                     aiIn.clear();
-                    if (!engine.lastError().isEmpty()) return engine.lastError();
+                    if (!engine.lastError().isEmpty()) return engine.lastError();// 引擎 ErrInfo 原样透传
                     e = drainEnhanced();// 分块后就地排水，引擎输出不全程驻留内存（NFR-P4）
                     if (!e.isEmpty()) return e;
                     if (onProgress && estFrames > 0.0)
@@ -238,7 +239,7 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
 
             while (e.isEmpty()) {
                 if (cancel && cancel->load()) {// 分块粒度的取消检查点
-                    e = QStringLiteral("已取消");
+                    e = {ErrCode::Cancelled, QStringLiteral("已取消")};
                     break;
                 }
                 ret = av_read_frame(in, pkt);
@@ -247,7 +248,8 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
                     ret = avcodec_send_packet(dec, pkt);
                     if (ret < 0 && ret != AVERROR(EAGAIN)) {
                         av_packet_unref(pkt);
-                        e = QStringLiteral("送包解码失败：%1").arg(ff_err(ret));
+                        // 源损坏的解码失败归 File（OQ-4 承载面修正：报 E_INTERNAL 误导 Agent）
+                        e = {ErrCode::File, QStringLiteral("送包解码失败：%1").arg(ff_err(ret))};
                         break;
                     }
                     while (e.isEmpty()) {
@@ -287,7 +289,7 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
                 }
                 auto tail = engine.flush();
                 enhanced.insert(enhanced.end(), tail.begin(), tail.end());
-                if (!engine.lastError().isEmpty()) e = engine.lastError();
+                if (!engine.lastError().isEmpty()) e = engine.lastError();// 引擎 ErrInfo 原样透传
                 else e = drainEnhanced();
             }
             if (e.isEmpty() && toOut) {// 冲刷回转重采样残样
@@ -307,7 +309,7 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
         av_packet_free(&wpkt);
         if (!e.isEmpty()) break;
         ret = av_write_trailer(out);
-        if (ret < 0) e = QStringLiteral("写文件尾失败：%1").arg(ff_err(ret));
+        if (ret < 0) e = {ErrCode::File, QStringLiteral("写文件尾失败：%1").arg(ff_err(ret))};// OQ-4：输出侧 I/O 归 File
     } while (false);
 
     if (toOut) swr_free(&toOut);

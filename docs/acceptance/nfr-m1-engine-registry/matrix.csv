@@ -1,25 +1,38 @@
-case,round-1,说明
-REG-001,PASS,改动面白名单：worktree（片 A 临时 detached 提交为基线）注入假引擎后 git status --porcelain 恰四处——?? gainengine.{h,cpp} + M engineregistry.cpp + M CMakeLists.txt；commandlayer/ffextractor/mediaservice/mainwidget/main/streamengine 零改动（NFR-M1 金标准）
-REG-002,PASS,假动词 gain e2e 正例：ok:true + result 全字段（sourceSpec/outputSpec 44100/2 跟随源、pcm_f32le、engineResampled=false、frames=220500、durationSec=5）
-REG-002r,PASS,gain 增益数值正确：输出/输入 RMS 比值 1.995262 vs 10^(6/20)=1.995262（偏差 0.0000%，容差 1%；python3 stdlib struct 读 f32/s16）
-REG-003,PASS,负例·gainDb 缺失：E_PARAMS exit 1 无 result，「gainDb 必须是数字」（缺失与类型错同文案 = 现状 semi 语义同构）
-REG-004,PASS,负例·gainDb "abc"：E_PARAMS，「gainDb 必须是数字」
-REG-005,PASS,负例·gainDb 30 越界：E_PARAMS，「gainDb 须在 [-24, 24] 内」（区间格式与 semi [-12, 12] 同构：逗号后一空格）
-REG-006,PASS,负例·gainDb 0：E_PARAMS，「gainDb 不能为 0」（qFuzzyIsNull 语义）
-REG-007,PASS,负例·未知字段 bogus：E_PARAMS，「未知字段：bogus」（信封白名单由条目 isDeclaredParam 供给）
-REG-008,PASS,负例·未注册动词 frobnicate：E_PARAMS「未知命令：frobnicate」且响应不回显 cmd（CMD-021 语义在双查表新分发路径下保持）
-REG-009,PASS,负例·note 缺失（Kind::String 分支唯一 e2e，审查 P2-2 补强）：E_PARAMS「note 缺失」
-REG-010,PASS,负例·note:123 类型错：E_PARAMS「note 必须是字符串」
-REG-011,PASS,负例·note 空串：E_PARAMS「note 不能为空」
-REG-WT,PASS,worktree 用后清理：git worktree remove --force + git worktree list 复核无残留（main 历史零痕迹；detached 提交无引用即弃）
-KIND-B,PASS,ad-hoc Bool 类型负例：denoise wind:"abc" → E_PARAMS「wind 必须是布尔值」（run-json 未断言，风险 3 Kind 覆盖补证据）
-KIND-S,PASS,ad-hoc requiresModel 的 model 三态：aiDenoise 无 model →「model 缺失」/ model:123 →「model 必须是字符串」/ model:"" →「model 不能为空」（勘误：此为 validateParams requiresModel 独立分支而非 ParamSpec::Kind::String 分支——后者五真条目零使用，覆盖由 REG-009..011 假引擎 String 参数承接）
-KIND-E,PASS,ad-hoc Enum 类型负例：separate stem:5 → E_PARAMS「stem 必须是字符串」
-KIND-ORD,PASS,ad-hoc 多错并存声明序：denoise humBase:61+wind:abc → humBase 先报「只接受 50、60 或 off」；separate 无 model+stem:bogus → model 先报「model 缺失」（requiresModel 先于 params）
-CMD,PASS,fr24 run-json 36 条全量重跑全绿零漂移（重点 CMD-020..028/031/033..035 校验文案逐字、CMD-021r 响应原文确定）
-CMD-EQV,PASS,薄壳等价 thinshell-eqv.sh 198493b build-linux：16/16（12 成功形态 + 4 失败路径）stdout 逐字一致 + 退出码一致 + 产物 cmp 逐字节一致
-GUI-EQV,PASS,槽级等价 gui-slot-eqv.sh 198493b build-linux：nomodel 15 + withmodel 16 槽次转录归一化逐字一致 + 缺模型/带模型分支内容断言 + 「已取消」双路直通 + 产物 8 件 cmp 一致 + 取消无半成品
-CI,PASS,ci-smoke 全量不回归：FFT 属性 + 分块不变性（dsp/pitch/ai/sep×2）+ parity 四族（PAR-DS/AI/MDX/PT/SR）+ CLI 冒烟 7 动词 + ffprobe 体检 + run-json 36；89 PASS 子断言零 FAIL 零 SKIP
-ZERO-DIFF,PASS,零改动范围自证：git diff --stat 198493b -- src/ CMakeLists.txt 恰三文件（CMakeLists.txt +2 / commandlayer.cpp +62/−115 净 −53（含审查 P2-1 防护）/ engineregistry.{h,cpp} 新建 54/262 行）；main.cpp、ffextractor、mediaservice、mainwidget、streamengine.h、四引擎、engine_test、parity 脚本零触碰
-WARN,PASS,构建零警告：touch 强制重编译（-Wall -Wextra）grep 无 warn/error；聚合全字段显式初始化消 -Wmissing-field-initializers
-WIN,PENDING,Windows 真机复验（mingw-release 构建 + CMD/REG 面随跑）：随 WP-1.0 round-4（fr24 同款挂账口径）
+case,round-1,round-2,说明
+REG-001,PASS,PASS（重跑）,改动面白名单：worktree（片 A 临时 detached 提交为基线）注入假引擎后 git status --porcelain 恰四处——?? gainengine.{h,cpp} + M engineregistry.cpp + M CMakeLists.txt；commandlayer/ffextractor/mediaservice/mainwidget/main/streamengine 零改动（NFR-M1 金标准）
+REG-002,PASS,PASS（重跑）,假动词 gain e2e 正例：ok:true + result 全字段（sourceSpec/outputSpec 44100/2 跟随源、pcm_f32le、engineResampled=false、frames=220500、durationSec=5）
+REG-002r,PASS,PASS（重跑）,gain 增益数值正确：输出/输入 RMS 比值 1.995262 vs 10^(6/20)=1.995262（偏差 0.0000%，容差 1%；python3 stdlib struct 读 f32/s16）
+REG-003,PASS,PASS（重跑）,负例·gainDb 缺失：E_PARAMS exit 1 无 result，「gainDb 必须是数字」（缺失与类型错同文案 = 现状 semi 语义同构）
+REG-004,PASS,PASS（重跑）,负例·gainDb "abc"：E_PARAMS，「gainDb 必须是数字」
+REG-005,PASS,PASS（重跑）,负例·gainDb 30 越界：E_PARAMS，「gainDb 须在 [-24, 24] 内」（区间格式与 semi [-12, 12] 同构：逗号后一空格）
+REG-006,PASS,PASS（重跑）,负例·gainDb 0：E_PARAMS，「gainDb 不能为 0」（qFuzzyIsNull 语义）
+REG-007,PASS,PASS（重跑）,负例·未知字段 bogus：E_PARAMS，「未知字段：bogus」（信封白名单由条目 isDeclaredParam 供给）
+REG-008,PASS,PASS（重跑）,负例·未注册动词 frobnicate：E_PARAMS「未知命令：frobnicate」且响应不回显 cmd（CMD-021 语义在双查表新分发路径下保持）
+REG-009,PASS,PASS（重跑）,负例·note 缺失（Kind::String 分支唯一 e2e，审查 P2-2 补强）：E_PARAMS「note 缺失」
+REG-010,PASS,PASS（重跑）,负例·note:123 类型错：E_PARAMS，「note 必须是字符串」
+REG-011,PASS,PASS（重跑）,负例·note 空串：E_PARAMS，「note 不能为空」
+REG-WT,PASS,PASS（重跑）,worktree 用后清理：git worktree remove --force + git worktree list 复核无残留（main 历史零痕迹；detached 提交无引用即弃）
+KIND-B,PASS,PASS（重跑）,ad-hoc Bool 类型负例：denoise wind:"abc" → E_PARAMS「wind 必须是布尔值」（run-json 未断言，风险 3 Kind 覆盖补证据）
+KIND-S,PASS,PASS（重跑）,ad-hoc requiresModel 的 model 三态：aiDenoise 无 model →「model 缺失」/ model:123 →「model 必须是字符串」/ model:"" →「model 不能为空」（勘误：此为 validateParams requiresModel 独立分支而非 ParamSpec::Kind::String 分支——后者五真条目零使用，覆盖由 REG-009..011 假引擎 String 参数承接）
+KIND-E,PASS,PASS（重跑）,ad-hoc Enum 类型负例：separate stem:5 → E_PARAMS「stem 必须是字符串」
+KIND-ORD,PASS,PASS（重跑）,ad-hoc 多错并存声明序：denoise humBase:61+wind:abc → humBase 先报「只接受 50、60 或 off」；separate 无 model+stem:bogus → model 先报「model 缺失」（requiresModel 先于 params）
+CMD,PASS,PASS（片 B 重跑）,fr24 run-json 36 条全量重跑全绿零漂移（重点 CMD-020..028/031/033..035 校验文案逐字、CMD-021r 响应原文确定；round-2 随 ci-smoke 全绿 + 负例码路径已改 errCodeText 透传）
+CMD-EQV,PASS,PASS（片 B 重跑）,薄壳等价 thinshell-eqv.sh：round-1 基线 198493b 16/16；round-2 基线 832e49b 16/16（12 成功形态 + 4 失败路径）stdout 逐字一致 + 退出码一致 + 产物 cmp 逐字节一致
+GUI-EQV,PASS,PASS（片 B 重跑）,槽级等价 gui-slot-eqv.sh：round-1 基线 198493b / round-2 基线 832e49b，nomodel 15 + withmodel 16 槽次转录归一化逐字一致 + 缺模型/带模型分支内容断言 + 「已取消」双路直通（E_CANCELLED message 即「已取消」，mainwidget 特判逐字命中）+ 产物 8 件 cmp 一致 + 取消无半成品
+CI,PASS,PASS（片 B 重跑）,ci-smoke 全量不回归：FFT 属性 + 分块不变性（dsp/pitch/ai/sep×2）+ parity 四族（PAR-DS/AI/MDX/PT/SR）+ CLI 冒烟 7 动词 + ffprobe 体检 + run-json 36；两轮均全绿
+ZERO-DIFF,PASS,PASS（片 B 自证）,零改动范围自证：round-1 基线 198493b 恰三文件；round-2 基线 832e49b 恰 14 文件（13 改 + CMakeLists +1）+ 新增未跟踪 errinfo.h，main.cpp/commandlayer.h/dspdenoiser/pitchshifter/mediaservice/view/ diff 0 行
+WARN,PASS,PASS（片 B 重跑）,构建零警告：touch 强制重编译（-Wall -Wextra）grep 无 warn/error；round-1 聚合全字段显式初始化消 -Wmissing-field-initializers
+ERR-NOINPUT,—,PASS,片 B：不存在输入 transcode/denoise → E_FILE「打不开文件：No such file or directory」rc=1（产生点 fftranscoder.cpp:30）
+ERR-SETUP-AI,—,PASS,片 B：垃圾模型 aiDenoise → E_MODEL「加载 AI 模型失败：Load model … Protobuf parsing failed.」rc=1（create→nullptr 走 setupErrorClass=Model，补片 A 审查 P3 空缺）
+ERR-SETUP-SEP,—,PASS,片 B：垃圾模型 separate → E_MODEL「加载人声分离模型失败：…」rc=1（同上，setupErrorClass=Model）
+ERR-DECODE,—,PASS,片 B OQ-4 δ1：mp3 中段抹零 → E_FILE「送包解码失败：Invalid data found when processing input」rc=1 无半成品（旧 INTERNAL→新 FILE 行为差实锤）
+ERR-WRITEPKG-TC,—,PASS,片 B OQ-4 δ2 转码侧：ulimit -f 4（RLIMIT_FSIZE 4096B）+ SIGXFSZ 忽略 → E_FILE「写包失败」rc=1 无半成品（/dev/full 在格式猜测期早退不可用，配方见 round-2 §7-5）
+ERR-WRITEPKG-EX,—,PASS,片 B OQ-4 δ2 提取侧：882KB wav + ulimit -f 100 中途 flush EFBIG → E_FILE「写包失败：File too large」rc=1 无半成品（测试轮配方勘误：原记 176KB+ulimit 64 组合在本机落 trailer 分支，两分支均 E_FILE 无半成品；旧二进制同场景 E_INTERNAL，δ2 行为差实证）
+ERR-TRAILER,—,PASS,片 B OQ-4 δ3 提取侧：全量 <32KB 的 m4a + ulimit -f 4（RLIMIT_FSIZE 4096B），唯一落盘点在 trailer → E_FILE「写文件尾失败：File too large」rc=1 无半成品
+ERR-TRAILER-TC,—,PASS,片 B OQ-4 δ3 转码侧（审查轮更正后补收）：4488B 单声道 s16 + ulimit -f 4 → E_FILE「写文件尾失败：File too large」rc=1 无半成品、预存输出亦被清理；实现方初报「ok=true 静默截断 1692B」经审查 20 组 + 主线程复测全反证推翻系误记（P3 债撤销，round-2 §5-3）
+ERR-LAYOUT,—,PASS,片 B：bad-layout 模型（make_bad_model.py 注入流，detached worktree）→ E_MODEL「模型输出布局不符：需要 [1,4,3072,256] plane-major，实际 [1,4,256,3072]」rc=1 无半成品（产生点赋 Model，P1-1 保留且消费侧 startsWith("模型") 退役）
+ERR-DTYPE,—,PASS,片 B：bad-dtype 模型 → E_MODEL「模型输出 dtype 非 float32（type=11）」rc=1 无半成品
+ERR-MISSING,—,代码级,片 B：「模型推理输出缺失」不可构造（setup 按名字选定 outIdx 的不变量封死 :216 守卫）→ 代码级证据收口（WP-1.4 同口径，spec §6 允许）
+ERR-CANCEL,—,PASS,片 B：预设 cancel 原子量直调 execute，transcode/extractAudio 双路 → E_CANCELLED「已取消」rc=1 无半成品（GUI 侧由 GUI-EQV「已取消」直通承接）
+ERR-ENGINE-032,—,PASS,片 B：CMD-032 维度错位模型全文捕获 → E_ENGINE「AI 降噪推理失败：Got invalid dimensions … Got: 257 Expected: 100 …」多行 ORT 文案经 ErrInfo.message 保真往返 rc=1 无半成品
+WIN,PENDING,PENDING,Windows 真机复验（mingw-release 构建 + CMD/REG/ERR 面随跑）：随 WP-1.0 round-4（fr24 同款挂账口径）

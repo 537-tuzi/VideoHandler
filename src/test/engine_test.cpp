@@ -143,7 +143,7 @@ int main(int argc, char* argv[])
         out.insert(out.end(), tail.begin(), tail.end());
     }
     if (!eng->lastError().isEmpty()) {
-        fprintf(stderr, "FAIL: %s\n", qPrintable(eng->lastError()));
+        fprintf(stderr, "FAIL: %s\n", qPrintable(eng->lastError().message));
         return 1;
     }
     if (!writeF32(outPath, out)) {

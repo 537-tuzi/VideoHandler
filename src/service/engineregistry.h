@@ -11,6 +11,8 @@
 
 #include <memory>
 
+#include "errinfo.h"
+
 class IStreamEngine;
 
 namespace EngineRegistry {
@@ -32,7 +34,7 @@ struct EngineEntry {
     QString id;// 动词名 = cmd（ASCII 小驼峰，与现动词同风格）
     QList<ParamSpec> params;// 参数 schema（按声明序校验、首个错误即返）
     bool requiresModel = false;// model 必填字符串 + 存在性检查 → E_MODEL「找不到模型 %1」
-    const char* setupErrorClass = nullptr;// create/setup 失败归类（E_MODEL 模型引擎 / E_ENGINE pitch 等）；nullptr = setup 不会失败
+    ErrCode setupErrorClass = ErrCode::None;// create/setup 失败归类（Model 模型引擎 / Engine pitch 等）；None = setup 不会失败
     bool lockCanonicalOutput = false;// 输出锁兜底 44.1k/2ch（模型工作点，P0 #4 有意保留）
     QString (*outputSuffix)(const QJsonObject& args);// 缺省输出后缀（可依赖参数，如 separate 按 stem）
     QString (*semanticCheck)(const QJsonObject& args);// 跨字段校验：返回错误文案，空 = 通过（args 已补缺省）

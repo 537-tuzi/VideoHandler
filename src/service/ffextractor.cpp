@@ -21,63 +21,64 @@ extern "C" {
 namespace {
 
 // 打开输入并定位指定类型流，失败时已保证关闭输入
-QString open_input(const QString& inPath, AVFormatContext** fmt, AVMediaType type, int* streamIdx) {
+ErrInfo open_input(const QString& inPath, AVFormatContext** fmt, AVMediaType type, int* streamIdx) {
     int ret = avformat_open_input(fmt, inPath.toUtf8().constData(), nullptr, nullptr);
-    if (ret < 0) return QStringLiteral("打不开文件：%1").arg(ff_err(ret));
+    if (ret < 0) return {ErrCode::File, QStringLiteral("打不开文件：%1").arg(ff_err(ret))};
     ret = avformat_find_stream_info(*fmt, nullptr);
     if (ret < 0) {
         avformat_close_input(fmt);
-        return QStringLiteral("读不到流信息：%1").arg(ff_err(ret));
+        return {ErrCode::File, QStringLiteral("读不到流信息：%1").arg(ff_err(ret))};
     }
     ret = av_find_best_stream(*fmt, type, -1, -1, nullptr, 0);
     if (ret < 0) {
         avformat_close_input(fmt);
-        return type == AVMEDIA_TYPE_AUDIO ? QStringLiteral("文件里没有音频流")
-                                          : QStringLiteral("文件里没有视频流");
+        return {ErrCode::File,
+                type == AVMEDIA_TYPE_AUDIO ? QStringLiteral("文件里没有音频流")
+                                           : QStringLiteral("文件里没有视频流")};
     }
     *streamIdx = ret;
     return {};
 }
 
 // 建输出容器并打开文件，失败时已保证释放上下文
-QString open_output(AVFormatContext** out, const QString& outPath) {
+ErrInfo open_output(AVFormatContext** out, const QString& outPath) {
     int ret = avformat_alloc_output_context2(out, nullptr, nullptr, outPath.toUtf8().constData());
-    if (ret < 0) return QStringLiteral("建输出容器失败：%1").arg(ff_err(ret));
+    if (ret < 0) return {ErrCode::File, QStringLiteral("建输出容器失败：%1").arg(ff_err(ret))};
     ret = avio_open(&(*out)->pb, outPath.toUtf8().constData(), AVIO_FLAG_WRITE);
     if (ret < 0) {
         avformat_free_context(*out);
         *out = nullptr;
-        return QStringLiteral("输出文件建不了：%1").arg(ff_err(ret));
+        return {ErrCode::File, QStringLiteral("输出文件建不了：%1").arg(ff_err(ret))};
     }
     return {};
 }
 
 // 建输出流、拷编码参数并写文件头
-QString write_header(AVFormatContext* in, AVFormatContext* out, int idx) {
+ErrInfo write_header(AVFormatContext* in, AVFormatContext* out, int idx) {
     AVStream* inSt = in->streams[idx];
     AVStream* outSt = avformat_new_stream(out, nullptr);
-    if (!outSt) return QStringLiteral("建输出流失败");
+    if (!outSt) return {ErrCode::File, QStringLiteral("建输出流失败")};
     if (avcodec_parameters_copy(outSt->codecpar, inSt->codecpar) < 0)
-        return QStringLiteral("拷贝编码参数失败");
+        return {ErrCode::File, QStringLiteral("拷贝编码参数失败")};
     outSt->codecpar->codec_tag = 0;
     outSt->time_base = inSt->time_base;
     int ret = avformat_write_header(out, nullptr);
-    if (ret < 0) return QStringLiteral("写文件头失败：%1").arg(ff_err(ret));
+    if (ret < 0) return {ErrCode::File, QStringLiteral("写文件头失败：%1").arg(ff_err(ret))};
     return {};
 }
 
 // 只搬指定流的包，边搬边报进度；cancel 为包粒度取消检查点（CLI 传空）
-QString copy_stream(AVFormatContext* in, AVFormatContext* out, int idx, const std::function<void(int)>& onProgress,
+ErrInfo copy_stream(AVFormatContext* in, AVFormatContext* out, int idx, const std::function<void(int)>& onProgress,
                     const std::atomic<bool>* cancel) {
     AVStream* inSt = in->streams[idx];
     AVStream* outSt = out->streams[0];// 输出容器只有这一条流，包索引须重映射到它
     double durSec = in->duration > 0 ? in->duration * av_q2d(AV_TIME_BASE_Q) : 0.0;
     AVPacket* pkt = av_packet_alloc();
-    if (!pkt) return QStringLiteral("内存不够");
-    QString e;
+    if (!pkt) return {ErrCode::Internal, QStringLiteral("内存不够")};
+    ErrInfo e;
     while (true) {
         if (cancel && cancel->load()) {
-            e = QStringLiteral("已取消");
+            e = {ErrCode::Cancelled, QStringLiteral("已取消")};
             break;
         }
         int ret = av_read_frame(in, pkt);
@@ -87,7 +88,7 @@ QString copy_stream(AVFormatContext* in, AVFormatContext* out, int idx, const st
             pkt->stream_index = outSt->index;
             ret = av_interleaved_write_frame(out, pkt);
             if (ret < 0) {
-                e = QStringLiteral("写包失败：%1").arg(ff_err(ret));
+                e = {ErrCode::File, QStringLiteral("写包失败：%1").arg(ff_err(ret))};// OQ-4：输出侧 I/O 归 File
                 av_packet_unref(pkt);
                 break;
             }
@@ -103,7 +104,7 @@ QString copy_stream(AVFormatContext* in, AVFormatContext* out, int idx, const st
 }
 
 // 统一收尾：关输出、关输入、失败删半成品
-QString finish(const QString& e, AVFormatContext** out, AVFormatContext** in, QString* outPath, QString* err) {
+QString finish(const ErrInfo& e, AVFormatContext** out, AVFormatContext** in, QString* outPath, ErrInfo* err) {
     if (*out) {
         avio_closep(&(*out)->pb);
         avformat_free_context(*out);
@@ -196,9 +197,9 @@ bool FFExtractor::probe(const QString& inPath, QString* info) {
     return true;
 }
 
-QString FFExtractor::extractAudio(const QString& inPath, QString* err, const std::function<void(int)>& onProgress,
+QString FFExtractor::extractAudio(const QString& inPath, ErrInfo* err, const std::function<void(int)>& onProgress,
                                   const std::atomic<bool>* cancel, const QString& outPath) {
-    QString e;
+    ErrInfo e;
     AVFormatContext* in = nullptr;
     AVFormatContext* out = nullptr;
     QString path;
@@ -218,15 +219,15 @@ QString FFExtractor::extractAudio(const QString& inPath, QString* err, const std
         e = copy_stream(in, out, idx, onProgress, cancel);
         if (!e.isEmpty()) break;
         int ret = av_write_trailer(out);
-        if (ret < 0) e = QStringLiteral("写文件尾失败：%1").arg(ff_err(ret));
+        if (ret < 0) e = {ErrCode::File, QStringLiteral("写文件尾失败：%1").arg(ff_err(ret))};// OQ-4：输出侧 I/O 归 File
     } while (false);
 
     return finish(e, &out, &in, &path, err);
 }
 
-QString FFExtractor::extractVideo(const QString& inPath, QString* err, const std::function<void(int)>& onProgress,
+QString FFExtractor::extractVideo(const QString& inPath, ErrInfo* err, const std::function<void(int)>& onProgress,
                                   const std::atomic<bool>* cancel, const QString& outPath) {
-    QString e;
+    ErrInfo e;
     AVFormatContext* in = nullptr;
     AVFormatContext* out = nullptr;
     QString path;
@@ -246,7 +247,7 @@ QString FFExtractor::extractVideo(const QString& inPath, QString* err, const std
         e = copy_stream(in, out, idx, onProgress, cancel);
         if (!e.isEmpty()) break;
         int ret = av_write_trailer(out);
-        if (ret < 0) e = QStringLiteral("写文件尾失败：%1").arg(ff_err(ret));
+        if (ret < 0) e = {ErrCode::File, QStringLiteral("写文件尾失败：%1").arg(ff_err(ret))};// OQ-4：输出侧 I/O 归 File
     } while (false);
 
     return finish(e, &out, &in, &path, err);

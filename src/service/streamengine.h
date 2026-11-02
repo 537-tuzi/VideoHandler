@@ -3,8 +3,11 @@
 #include <QString>
 #include <vector>
 
+#include "errinfo.h"
+
 // 流式引擎统一接口：喂入交错样本，内部缓冲可致输出滞后；转码轨道按期望规格自动重采样
-// 契约：process/flush 不得抛出（ORT 等运行期异常须在引擎内捕获），失败归口 lastError() 供转码器查询
+// 契约：process/flush 不得抛出（ORT 等运行期异常须在引擎内捕获），失败归口 lastError()
+// （ErrInfo：错误码与文案在产生点同赋，转码器原样透传给命令层——文案前缀匹配已退役，P3-1）
 class IStreamEngine
 {
 public:
@@ -13,5 +16,5 @@ public:
     virtual int inChannels() const = 0;// 期望输入声道数
     virtual std::vector<float> process(const float* in, int64_t frames) = 0;// 喂入并取回输出
     virtual std::vector<float> flush() = 0;// 流末冲刷，终态调用，之后不得再 process
-    virtual QString lastError() const { return {}; }// 运行期错误，空为无错
+    virtual ErrInfo lastError() const { return {}; }// 运行期错误（码+文案同点产生），isEmpty 为无错
 };

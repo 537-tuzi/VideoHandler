@@ -85,7 +85,7 @@ struct VocalSeparator::Impl {
     int64_t inputLen = 0;// 已喂入的 x 帧数
     bool headDone = false;
     bool instrumental = false;// 请求副 stem（mix − compensate×主 stem）
-    QString errMsg;
+    ErrInfo errMsg;// 运行期错误（码与文案同点赋值：输出契约违约 = Model / 推理与素材过短 = Engine）
     std::deque<float> mixQ;// 副 stem 模式下暂存的对齐 mix（滞后块级 OLA 排水线，有界）
     std::vector<float> wola, wnorm;// 块内 padded 域 WOLA 累计 + 窗²归一（每块重置；输出取 [trim, trim+C)）
     std::deque<float> outQ;// P 域输出样本（块级 OLA 排水产生）
@@ -206,7 +206,7 @@ struct VocalSeparator::Impl {
         }
     }
 
-    bool runModel() {// 推理 + 输出契约校验（dtype/shape/plane-major），违例归口 errMsg
+    bool runModel() {// 推理 + 输出契约校验（dtype/shape/plane-major），违例归口 errMsg（Model）
         const float* ys = nullptr;
         try {
             std::array<int64_t, 4> shape{1, 4, dimF, dimT};
@@ -214,12 +214,15 @@ struct VocalSeparator::Impl {
             auto out = sess->Run(Ort::RunOptions{nullptr}, inNames.data(), &x, 1,
                                  outNames.data(), outNames.size());
             if (out.size() <= static_cast<size_t>(outIdx)) {
-                errMsg = QStringLiteral("模型推理输出缺失（%1 个输出）").arg(out.size());
+                errMsg = {ErrCode::Model,
+                          QStringLiteral("模型推理输出缺失（%1 个输出）").arg(out.size())};
                 return false;
             }
             const auto info = out[static_cast<size_t>(outIdx)].GetTensorTypeAndShapeInfo();
             if (info.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-                errMsg = QStringLiteral("模型输出 dtype 非 float32（type=%1）").arg(static_cast<int>(info.GetElementType()));
+                errMsg = {ErrCode::Model,
+                          QStringLiteral("模型输出 dtype 非 float32（type=%1）")
+                              .arg(static_cast<int>(info.GetElementType()))};
                 return false;
             }
             const auto dims = info.GetShape();
@@ -227,14 +230,16 @@ struct VocalSeparator::Impl {
             for (int64_t d : dims) ds << QString::number(d);
             if (dims.size() != 4 || dims[0] != 1 || dims[1] != 4
                 || dims[2] != dimF || dims[3] != dimT) {
-                errMsg = QStringLiteral("模型输出布局不符：需要 [1,4,%1,%2] plane-major，实际 [%3]")
-                             .arg(dimF).arg(dimT).arg(ds.join(QLatin1Char(',')));
+                errMsg = {ErrCode::Model,
+                          QStringLiteral("模型输出布局不符：需要 [1,4,%1,%2] plane-major，实际 [%3]")
+                              .arg(dimF).arg(dimT).arg(ds.join(QLatin1Char(',')))};
                 return false;
             }
             ys = out[static_cast<size_t>(outIdx)].GetTensorData<float>();
             synthesizeChunk(ys);
         } catch (const Ort::Exception& e) {
-            errMsg = QStringLiteral("人声分离推理失败：%1").arg(QString::fromUtf8(e.what()));
+            errMsg = {ErrCode::Engine,
+                      QStringLiteral("人声分离推理失败：%1").arg(QString::fromUtf8(e.what()))};
             return false;
         }
         return true;
@@ -410,7 +415,7 @@ void VocalSeparator::setInstrumental(bool on) {
     impl_->instrumental = on;
 }
 
-QString VocalSeparator::lastError() const {
+ErrInfo VocalSeparator::lastError() const {
     return impl_->errMsg;
 }
 
@@ -444,8 +449,9 @@ std::vector<float> VocalSeparator::process(const float* in, int64_t frames) {
 std::vector<float> VocalSeparator::flush() {
     std::vector<float> out;
     if (!impl_->headDone) {// 音频太短，无法构成一帧
-        impl_->errMsg = QStringLiteral("音频太短，人声分离至少需要约 %1 秒")
-                            .arg((impl_->nFft + 1) / 44100.0, 0, 'f', 2);
+        impl_->errMsg = {ErrCode::Engine,
+                         QStringLiteral("音频太短，人声分离至少需要约 %1 秒")
+                             .arg((impl_->nFft + 1) / 44100.0, 0, 'f', 2)};
         return out;
     }
     const int64_t n = impl_->inputLen;

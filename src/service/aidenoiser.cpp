@@ -30,7 +30,7 @@ struct AiDenoiser::Impl {
     bool frame0Done = false;// 反射头帧已建（半窗前导缓冲凑齐）
     int framesDone = 0;// 已跑帧数（flush 反射尾帧的帧序）
     float belowA = 0.f;// 当前帧窗首样本前一格（反射取值最深源，滑动时留底）
-    QString errMsg;// 运行期错误（契约：不得抛出，归口此处）
+    ErrInfo errMsg;// 运行期错误（契约：不得抛出，归口此处；码与文案同点赋值，推理异常 = Engine）
     int64_t totalIn = 0;
 
     bool readMetaInt(const Ort::ModelMetadata& meta, OrtAllocator* al, const char* key, int* out) {
@@ -325,7 +325,7 @@ bool AiDenoiser::ready() const {
     return impl_->sess != nullptr;
 }
 
-QString AiDenoiser::lastError() const {
+ErrInfo AiDenoiser::lastError() const {
     return impl_->errMsg;
 }
 
@@ -341,7 +341,8 @@ std::vector<float> AiDenoiser::process(const float* in, int64_t frames) {
     try {// 契约：不得抛出，Run 异常归口 lastError
         impl_->feedPending(&out);
     } catch (const Ort::Exception& e) {
-        impl_->errMsg = QStringLiteral("AI 降噪推理失败：%1").arg(QString::fromUtf8(e.what()));
+        impl_->errMsg = {ErrCode::Engine,
+                         QStringLiteral("AI 降噪推理失败：%1").arg(QString::fromUtf8(e.what()))};
     }
     return out;
 }
@@ -352,7 +353,8 @@ std::vector<float> AiDenoiser::flush() {
     try {// 契约：不得抛出，Run 异常归口 lastError
         impl_->flushTail(&out);
     } catch (const Ort::Exception& e) {
-        impl_->errMsg = QStringLiteral("AI 降噪推理失败：%1").arg(QString::fromUtf8(e.what()));
+        impl_->errMsg = {ErrCode::Engine,
+                         QStringLiteral("AI 降噪推理失败：%1").arg(QString::fromUtf8(e.what()))};
     }
     impl_->resetStream();
     return out;
