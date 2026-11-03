@@ -31,7 +31,8 @@ ln -s "$(pwd)/third_party" "$BASE/third_party"
     || { echo "FAIL: 基线构建失败"; exit 1; }
 
 echo "== 探针编译（同一源码，双树各链一份）=="
-PKGS="Qt6Core libavformat libavcodec libavutil libswresample soundtouch"
+# Qt6Network：FR-8 片 A 起 engine 链入 QNAM（modelmanager），链 engine 的探针随动（基线滚动同型）
+PKGS="Qt6Core Qt6Network libavformat libavcodec libavutil libswresample soundtouch"
 mkdir -p "$W/bin-old" "$W/bin-new"
 for v in old new; do
     [ "$v" = old ] && TREE="$BASE" || TREE="$(pwd)"

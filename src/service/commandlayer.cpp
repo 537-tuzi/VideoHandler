@@ -4,6 +4,7 @@
 #include "errinfo.h"
 #include "ffextractor.h"
 #include "fftranscoder.h"
+#include "modelmanager.h"
 #include "streamengine.h"
 #include "model/data.h"
 #include "workspace.h"
@@ -28,6 +29,20 @@ using EngineRegistry::EngineEntry;// 注册表条目（本文件多处引用，�
 QString requireString(const QJsonObject& req, const char* key, QString* out) {
     const QJsonValue v = req.value(QLatin1String(key));
     if (v.isUndefined()) return QStringLiteral("%1 缺失").arg(QLatin1String(key));
+    if (!v.isString()) return QStringLiteral("%1 必须是字符串").arg(QLatin1String(key));
+    *out = v.toString();
+    if (out->isEmpty()) return QStringLiteral("%1 不能为空").arg(QLatin1String(key));
+    return {};
+}
+
+// 可选字符串（model 族动词的 root/endpoint/for 等）：缺省（无键）→ 空串通过；
+// 给了但类型错/空串 → 与 requireString 同款模板报错（宽松缺省 + 严格给定，D5）
+QString optionalString(const QJsonObject& req, const char* key, QString* out) {
+    const QJsonValue v = req.value(QLatin1String(key));
+    if (v.isUndefined()) {
+        out->clear();
+        return {};
+    }
     if (!v.isString()) return QStringLiteral("%1 必须是字符串").arg(QLatin1String(key));
     *out = v.toString();
     if (out->isEmpty()) return QStringLiteral("%1 不能为空").arg(QLatin1String(key));
@@ -258,14 +273,62 @@ QJsonObject cmdWsInfo(const QJsonObject& req, const Ctx&) {
     return okResponse(reqCmd(req), result);
 }
 
-// ---- 内置动词表（probe/extract 族 + wsInfo：非引擎——探测、流复制与只读查询，无 IStreamEngine 参与、
-// 无引擎参数、错误分类独立；保留专有处理器，spec D3。与引擎注册表并列成 execute 的双查表）----
+// ---- model 族动词（FR-8 片 A，spec D5）：无素材语义（不需要 input），核心在 ModelManager；
+// 壳只做字段校验 + Ctx 透传，错误码在产生点赋值后 errCodeText 透传（Net 域为新增七类码）----
+
+// modelList：只读三视角合并（内置目录 ∪ models.json ∪ 磁盘实况）；查询不建目录不落盘
+QJsonObject cmdModelList(const QJsonObject& req, const Ctx&) {
+    QString root;
+    const QString rerr = optionalString(req, "root", &root);
+    if (!rerr.isEmpty()) return errorResponse(reqCmd(req), errCodeText(ErrCode::Params), rerr);
+    return okResponse(reqCmd(req), ModelManager::listModels(root));
+}
+
+// modelDownload：幂等下载（库/appDir 已在位且指纹或大小符合 → 返回现路径零网络请求，D5）
+QJsonObject cmdModelDownload(const QJsonObject& req, const Ctx& ctx) {
+    const QString cmd = reqCmd(req);
+    QString id;
+    const QString ierr = requireString(req, "id", &id);
+    if (!ierr.isEmpty()) return errorResponse(cmd, errCodeText(ErrCode::Params), ierr);
+    QString root, endpoint;
+    QString oerr = optionalString(req, "root", &root);
+    if (oerr.isEmpty()) oerr = optionalString(req, "endpoint", &endpoint);
+    if (!oerr.isEmpty()) return errorResponse(cmd, errCodeText(ErrCode::Params), oerr);
+    ErrInfo err;
+    const ModelManager::Ctx mctx{ctx.cancel, ctx.onProgress};// 取消/进度透传（同型字段直转）
+    const QJsonObject result = ModelManager::downloadModel(id, root, endpoint, mctx, &err);
+    if (result.isEmpty()) return errorResponse(cmd, errCodeText(err.code), err.message);
+    return okResponse(cmd, result);
+}
+
+// modelImport：复制进库绝不移动（原件只读）；id/for 二选一语义在 ModelManager 内归口（D6）
+QJsonObject cmdModelImport(const QJsonObject& req, const Ctx& ctx) {
+    const QString cmd = reqCmd(req);
+    QString path;
+    const QString perr = requireString(req, "path", &path);
+    if (!perr.isEmpty()) return errorResponse(cmd, errCodeText(ErrCode::Params), perr);
+    QString id, forVerb, root;
+    QString oerr = optionalString(req, "id", &id);
+    if (oerr.isEmpty()) oerr = optionalString(req, "for", &forVerb);
+    if (oerr.isEmpty()) oerr = optionalString(req, "root", &root);
+    if (!oerr.isEmpty()) return errorResponse(cmd, errCodeText(ErrCode::Params), oerr);
+    ErrInfo err;
+    const ModelManager::Ctx mctx{ctx.cancel, ctx.onProgress};
+    const QJsonObject result = ModelManager::importModel(id, forVerb, path, root, mctx, &err);
+    if (result.isEmpty()) return errorResponse(cmd, errCodeText(err.code), err.message);
+    return okResponse(cmd, result);
+}
+
+// ---- 内置动词表（probe/extract 族 + wsInfo + model 族：非引擎——探测、流复制、只读查询与
+// 模型库管理，无 IStreamEngine 参与、无引擎参数、错误分类独立；保留专有处理器，spec D3。
+// 与引擎注册表并列成 execute 的双查表）----
 struct BuiltinVerb {
     const char* id;
     QJsonObject (*handler)(const QJsonObject&, const Ctx&);
-    bool allowsOutput;// probe 探测无落盘语义拒收 output；wsInfo 只读查询同拒
-    bool allowsWorkspace;// 工作区接管的是落盘动词；probe/wsInfo 无落盘语义同拒 workspace
-    QList<const char*> extraKeys;// 信封白名单附加键（wsInfo 的 root；引擎动词的参数由条目供给）
+    bool allowsOutput;// probe 探测无落盘语义拒收 output；wsInfo/model 族无落盘语义同拒
+    bool allowsWorkspace;// 工作区接管的是落盘动词；无落盘语义的动词同拒 workspace（model 族 D5）
+    QList<const char*> extraKeys;// 信封白名单附加键（wsInfo/model 族的专有键；引擎动词的参数由条目供给）
+    bool requiresInput = true;// input 必填豁免：model 族管理模型库不碰媒体文件（FR-8 D5）；末位+缺省=旧条目零改
 };
 
 const QList<BuiltinVerb>& builtinVerbs() {
@@ -274,6 +337,9 @@ const QList<BuiltinVerb>& builtinVerbs() {
         {"extractAudio", cmdExtractAudio, true, true, {}},
         {"extractVideo", cmdExtractVideo, true, true, {}},
         {"wsInfo", cmdWsInfo, false, false, {"root"}},
+        {"modelList", cmdModelList, false, false, {"root"}, false},
+        {"modelDownload", cmdModelDownload, false, false, {"id", "root", "endpoint"}, false},
+        {"modelImport", cmdModelImport, false, false, {"path", "id", "for", "root"}, false},
     };
     return verbs;
 }
@@ -325,8 +391,10 @@ QJsonObject execute(const QJsonObject& request, const Ctx& ctx) {
         }
         // —— 未知字段拒收（动词级白名单由条目/内置表供给；QJsonObject 键序确定 → 报错确定性）——
         const bool allowsOutput = entry ? true : builtin->allowsOutput;
+        const bool requiresInput = entry ? true : builtin->requiresInput;// model 族豁免（D5）：input 随之不进白名单，给了即未知字段
         for (const QString& key : request.keys()) {
-            if (key == QLatin1String("v") || key == QLatin1String("cmd") || key == QLatin1String("input")) continue;
+            if (key == QLatin1String("v") || key == QLatin1String("cmd")) continue;
+            if (key == QLatin1String("input") && requiresInput) continue;
             if (key == QLatin1String("output") && allowsOutput) continue;
             if (key == QLatin1String("workspace")) continue;// workspace 在信封段专检（能力/类型/互斥，见下）
             if (entry && EngineRegistry::isDeclaredParam(*entry, key)) continue;
@@ -338,10 +406,12 @@ QJsonObject execute(const QJsonObject& request, const Ctx& ctx) {
             }
             return errorResponse(cmd, errCodeText(ErrCode::Params), QStringLiteral("未知字段：%1").arg(key));
         }
-        // —— 公共字段：input 必填；output（若允许）非空 + 原件只读防线（FR-A4 根基）——
+        // —— 公共字段：input 必填（model 族豁免——无素材语义，D5）；output（若允许）非空 + 原件只读防线（FR-A4 根基）——
         QString input;
-        const QString ierr = requireString(request, "input", &input);
-        if (!ierr.isEmpty()) return errorResponse(cmd, errCodeText(ErrCode::Params), ierr);
+        if (requiresInput) {
+            const QString ierr = requireString(request, "input", &input);
+            if (!ierr.isEmpty()) return errorResponse(cmd, errCodeText(ErrCode::Params), ierr);
+        }
         // —— workspace 字段（FR-A4 D4）：单一路径决策——带 = 命令层定路径，output 同给即互斥违例；
         // 无落盘语义的动词（probe/wsInfo）拒收（与 allowsOutput=false 拒 output 同型）——
         if (request.contains(QStringLiteral("workspace"))) {

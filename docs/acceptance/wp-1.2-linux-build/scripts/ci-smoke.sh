@@ -86,4 +86,10 @@ bash docs/acceptance/fr-a4-workspace/scripts/run-ws.sh "$BUILD"
 echo "== GUI 工作区接线（FR-A4 片 B：GWS 用例族，探针直调 FFExtractor 槽；缺 onnx 时硬退）=="
 bash docs/acceptance/fr-a4-workspace/scripts/gui-ws.sh "$BUILD"
 
+echo "== 模型管理（FR-8 片 A：MDL 用例族；工作区走磁盘卷 TMPDIR——/tmp 为配额 tmpfs，"
+echo "   66MB×N 下载副本曾把配额逼满致 fwrite 静默失败假象，见 fr8 round-2.md）=="
+MDLTMP="$PWD/$BUILD/.mdl-tmp" # 绝对路径：mktemp 跟随 TMPDIR 相对时会回相对工作区，撞产品绝对路径断言
+mkdir -p "$MDLTMP" # 复用目录，跑批 trap 自清内部工作区
+TMPDIR="$MDLTMP" bash docs/acceptance/fr8-model-management/scripts/run-models.sh "$BUILD"
+
 echo "== ci-smoke 全绿 =="

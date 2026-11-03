@@ -38,7 +38,8 @@ cp "$GTCRN" "$BIN/models/denoiser/"
 cp "$UVR" "$BIN/models/separator/"
 
 echo "== 探针编译（gui-ws-probe.cpp，链主树 libengine.a；模型落 bin 侧供 appDir 相对解析）=="
-PKGS="Qt6Core libavformat libavcodec libavutil libswresample soundtouch"
+# Qt6Network：FR-8 片 A 起 engine 链入 QNAM（modelmanager），链 engine 的探针随动（基线滚动同型）
+PKGS="Qt6Core Qt6Network libavformat libavcodec libavutil libswresample soundtouch"
 g++ -std=c++20 -O2 "$S/gui-ws-probe.cpp" -o "$BIN/probe" -I"$(pwd)/src" \
     $(pkg-config --cflags $PKGS) "$BUILD/libengine.a" \
     $(pkg-config --libs $PKGS) "$(pwd)/third_party/ort/linux/lib/libonnxruntime.so" \

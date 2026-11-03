@@ -5,6 +5,7 @@
 #include "model/data.h"
 
 #include <QApplication>
+#include <QCoreApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTextStream>
@@ -141,9 +142,11 @@ int main(int argc, char* argv[]) {
         if (argc != 2)// --json 不接多余参数（D1），仍回 E_PARAMS JSON
             return emitJsonResponse(CommandLayer::errorResponse(
                 {}, "E_PARAMS", QStringLiteral("用法：--json 从 stdin 读请求，不接多余参数")));
+        QCoreApplication a(argc, argv);// FR-8：model 族经 QNAM 下载，无头壳须有应用实例撑事件循环（spec D3）
         return runJson();
     }
-    if (argc >= 3) {// CLI 模式无需 QApplication
+    if (argc >= 3) {
+        QCoreApplication a(argc, argv);// 同上：命令面可能触达 QNAM（--json 直调）；无需 GUI 的 QApplication
         return runCli(argc, argv);
     }
     QApplication a(argc, argv);

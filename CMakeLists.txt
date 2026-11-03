@@ -7,8 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 set(CMAKE_AUTOMOC ON)
 
-# Qt：Core（引擎层 QString）+ Widgets（GUI）
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
+# Qt：Core（引擎层 QString）+ Network（FR-8 模型下载器，qtbase 内无新依赖）+ Widgets（GUI）
+find_package(Qt6 REQUIRED COMPONENTS Core Network Widgets)
 
 # ---- engine 静态库：全部流式引擎 + 转码/提取底座（GUI 与 engine_test 共用）----
 add_library(engine STATIC
@@ -25,6 +25,8 @@ add_library(engine STATIC
     src/service/ffextractor.cpp
     src/service/fftranscoder.h
     src/service/fftranscoder.cpp
+    src/service/modelmanager.h
+    src/service/modelmanager.cpp
     src/service/pitchshifter.h
     src/service/pitchshifter.cpp
     src/service/streamengine.h
@@ -48,6 +50,7 @@ if(WIN32)
     target_link_libraries(engine
         PUBLIC Qt6::Core
         PRIVATE
+        Qt6::Network# FR-8 模型下载器（QNAM）；qtbase 内组件，第三方依赖组合不变
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ffmpeg/lib/libavformat-63.a
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ffmpeg/lib/libavcodec-63.a
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ffmpeg/lib/libavutil-61.a
@@ -67,6 +70,7 @@ else()
     target_link_libraries(engine
         PUBLIC Qt6::Core
         PRIVATE
+        Qt6::Network# FR-8 模型下载器（QNAM）；qtbase 内组件，第三方依赖组合不变
         PkgConfig::FFMPEG
         PkgConfig::SOUNDTOUCH
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ort/linux/lib/libonnxruntime.so
@@ -130,6 +134,7 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${QT_BIN}/bin/Qt6Core.dll
             ${QT_BIN}/bin/Qt6Gui.dll
+            ${QT_BIN}/bin/Qt6Network.dll
             ${QT_BIN}/bin/Qt6Widgets.dll
             ${MINGW_BIN}/libgcc_s_seh-1.dll
             ${MINGW_BIN}/libstdc++-6.dll

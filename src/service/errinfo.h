@@ -2,7 +2,9 @@
 
 // 结构化错误通道（NFR-M1 片 B，spec D4）：错误码在产生点与中文文案同点诞生（ErrInfo），
 // 消费方透传 code 而非对文案做前缀匹配（P3-1 收口，OQ-2 硬切一刀）。
-// ErrCode 六类与命令层响应错误码 E_* 一一对应，None = 无错；串值的唯一来源是 errCodeText。
+// ErrCode 七类与命令层响应错误码 E_* 一一对应，None = 无错；串值的唯一来源是 errCodeText。
+// Net 为 FR-8 新增（OQ-1 拍板）：网络传输域（DNS/连接拒绝/HTTP 4xx5xx/下载指纹不符）——
+// 断网不是模型坏了，塞进 E_MODEL 会误导 NFR-R4 的「引导重新下载」识别。
 
 #include <QString>
 #include <QtGlobal>
@@ -13,6 +15,7 @@ enum class ErrCode {
     File,// 源/输出侧文件与媒体 I/O 失败（E_FILE；含源损坏的解码/写包/写尾，OQ-4 承载面修正）
     Model,// 模型缺失/不合规/输出契约违约（E_MODEL，NFR-R4 引导重下载）
     Engine,// 引擎运行期失败（E_ENGINE，推理异常/素材过短等）
+    Net,// 网络传输失败（E_NET，FR-8：DNS/连接拒绝/HTTP 4xx5xx/下载指纹或 ETag 与目录不符）
     Cancelled,// 用户取消（E_CANCELLED）
     Internal,// 内部资源失败（内存/重采样器等，E_INTERNAL）
 };
@@ -37,6 +40,7 @@ inline const char* errCodeText(ErrCode code) {
     case ErrCode::File:      return "E_FILE";
     case ErrCode::Model:     return "E_MODEL";
     case ErrCode::Engine:    return "E_ENGINE";
+    case ErrCode::Net:       return "E_NET";
     case ErrCode::Cancelled: return "E_CANCELLED";
     case ErrCode::Internal:  return "E_INTERNAL";
     case ErrCode::None:      break;

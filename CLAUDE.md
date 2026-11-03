@@ -27,8 +27,9 @@ VideoHandler — Qt6 Widgets + FFmpeg + ONNX Runtime 的音频处理桌面软件
   video_handler --sep-instrumental <in> <out.wav> [model.onnx]
   ```
   另有 `--extract-audio <in>` / `--extract-video <in>`（FFExtractor 流复制，输出到源目录）；argc≥3 即进 CLI，无参数启动 GUI。
-- **FR-24 无头命令面**：`video_handler --json`（请求从 stdin 读 UTF-8 JSON，stdout 恒回单个 JSON 文档；动词 transcode/denoise/aiDenoise/pitch/separate/probe/extractAudio/extractVideo/wsInfo，schema/错误码/结果对象契约见 `docs/spec/fr24-command-layer.md`）；上面 7 个旧动词与 GUI 七槽（片 D）是同一核心（`CommandLayer::execute`）的薄壳，验收 `docs/acceptance/fr24-command-layer/`（CMD-*/GUI-* 用例，CMD-* 随 ci-smoke 跑）。
+- **FR-24 无头命令面**：`video_handler --json`（请求从 stdin 读 UTF-8 JSON，stdout 恒回单个 JSON 文档；动词 transcode/denoise/aiDenoise/pitch/separate/probe/extractAudio/extractVideo/wsInfo + FR-8 增 modelList/modelDownload/modelImport，schema/错误码/结果对象契约见 `docs/spec/fr24-command-layer.md`）；上面 7 个旧动词与 GUI 七槽（片 D）是同一核心（`CommandLayer::execute`）的薄壳，验收 `docs/acceptance/fr24-command-layer/`（CMD-*/GUI-* 用例，CMD-* 随 ci-smoke 跑）。
 - **FR-A4 工作区（片 A+B 已落地）**：请求带 `workspace:<根目录>` 即工作区模式——产物落 `<根>/<stem>.<hash8>/vNNN_<cmd>/`、result 增量带 `workspace:{root,dir,version}`、版本记录含来源链（filled 参数/输入哈希/模型摘要/parentVersion/输出真值+truncated）；`workspace` 与 `output` 互斥、probe/wsInfo 拒收；不带则 direct 模式行为零漂移。`wsInfo` 只读查询（root+input）。GUI 七槽缺省走工作区无开关硬切（QSettings 只记根路径、单点插键在 `FFExtractor::runRequest`、busy 期间历史/继续不击穿任务锁）。契约 `docs/spec/fr-a4-workspace.md`，验收 `docs/acceptance/fr-a4-workspace/`（WS+GWS 族随 ci-smoke 跑）。
+- **FR-8 模型管理（片 A 已落地，片 B GUI 未动）**：三动词 modelList（免 input 免 busy 只读）/modelDownload（幂等：登记 sha 即信零网络；.part 是续传缓存非任务产物，NFR-R1 豁免）/modelImport（by-id 指纹登记 / 自由导入 `for`+setup 试开，license=unknown 用户自核）；模型库 = `<root>/<用途>/` + models.json（缺省根 `~/VideoHandler-Models`，`root` 字段可带，与 workspace-root 同型不读环境变量）；endpoint 请求字段换镜像前缀（仅 hfSource 条目）；model 族拒 workspace（共享资产非任务产物，等效机制=新路径+原子写+登记失败删产物）；信封 requiresInput 豁免后旧动词零漂移。契约 `docs/spec/fr8-model-management.md`（D1–D9+§7.1 拍板），验收 `docs/acceptance/fr8-model-management/`（MDL 族随 ci-smoke 跑，工作区走磁盘卷 TMPDIR 防 /tmp 配额假象）。
 - 暂无单测框架；引擎正确性验收 = parity 测试（对照官方实现，−60dB RMS 准入，NFR-Q1，WP-1.1 已建）：随 ci-smoke 跑（`docs/acceptance/engine-parity/scripts/run_parity.sh`），缺 Python 参考依赖的族整族 SKIP、`PARITY_REQUIRED=1` 时升级 FAIL；换参考实现版本后 `gen_golden.py --force` 重生成金样本。
 
 ## 架构（现状）
@@ -40,9 +41,10 @@ service/mediaservice QThread worker 调度 + busy 锁 + 取消原子量（一次
 service/commandlayer FR-24 无头命令层：execute(QJsonObject,Ctx)→QJsonObject 纯函数（严格校验 + 六类错误码 E_*）；--json 走 stdin/stdout 单 JSON 文档；旧 7 动词是其薄壳；分发=双查表（NFR-M1 片 A：engineregistry 引擎表 → 内置 probe/extract 小表 → 未命中 E_PARAMS）
 service/engineregistry NFR-M1 引擎注册表：转码族 5 动词自描述条目（ParamSpec 校验 schema/工厂闭包吞 setup 异构/setupErrorClass/lockCanonical/后缀），validateParams 是引擎参数校验消息的唯一权威（信封字段模板仍在 commandlayer；与旧处理器逐字兼容）；新增引擎=新 .h/.cpp+表条目+CMake 两行，命令层/GUI/服务层零改（NFR-M1 片 B 已落地：错误码在产生点与文案同点诞生，消费方透传 errCodeText——前缀匹配 classify*/isFileError 已删，OQ-4 三处承载面修正送包解码/写包/写尾 E_INTERNAL→E_FILE）
 service/workspace    FR-A4 工作区版本化核心（片 A 已落地）：planVersion/commitVersion/discardVersion/queryInfo 两段提交外壳——身份=内容哈希（根级缓存 path+size+mtimeMs 三键加速，miss 先哈希再扫根目录 `*.<hash8>` 复用既有工作区）、版本目录 vNNN_<cmd> append-only（号不复用孤儿、可回收已删占位）、workspace.json 权威索引 QSaveFile 原子写（登记失败=任务失败删产物不留孤儿）；哈希 64KiB 流式（NFR-P4 口径）
+service/modelmanager FR-8 模型管理核心（片 A 已落地）：内置目录表（编译期 2 条目，sha/URL 与 fetch-deps.sh 同源）+ models.json 库清单（QSaveFile/损坏按空/磁盘实况为准）+ modelList 三视角合并 + QNAM 下载器（HEAD 解析→ETag 对照→Range 续 .part→64KiB 增量写→流式 sha256→同卷 rename→登记；幂等「登记 sha 即信」）+ 导入两形态（by-id 指纹 / 自由导入 create 闭包试开，占用三规则防双 id 同路径与 id 遮蔽）；进程外下载模型须 QCoreApplication 在位（main 已补）
 service/ffextractor  提取/探测静态核心（probeInfo/extract*）供命令层复用；GUI worker 槽为壳——组 JSON 请求走 CommandLayer::execute（FR-24 片 D），GUI 文案逐字不变；extract* 带 outDir 尾参（FR-A4：工作区只给目录，缺省命名规则单一来源仍在底座）
 service/fftranscoder 唯一转码通路：解码 → swr 到引擎规格 → 引擎 → swr 回源规格（跟随源）→ WAV(f32)
-service/errinfo.h    结构化错误通道（NFR-M1 片 B）：ErrCode 六类+None 与 E_* 一一对应，ErrInfo{code,message} 在产生点赋码，errCodeText 是 E_* 字面量唯一来源
+service/errinfo.h    结构化错误通道（NFR-M1 片 B + FR-8）：ErrCode 七类+None 与 E_* 一一对应（FR-8 增 Net/E_NET），ErrInfo{code,message} 在产生点赋码，errCodeText 是 E_* 字面量唯一来源
 service/ 引擎        全部实现 IStreamEngine { inRate / inChannels / process / flush }
   dspdenoiser        RBJ biquad 陷波(50/60Hz×3 可选，HumBase) + 高通，无内部缓冲
   aidenoiser         GTCRN 流式（16k 单声道；STFT/WOLA 自实现；ORT 用 PIMPL 隔离）
@@ -79,7 +81,7 @@ test/fft_test        FFT 性质 DUT（仅非 WIN32；FFT-PR 自检 + numpy 对�
 ## 方向（详见 REQUIREMENTS.md 第 9 节）
 
 - 执行顺序：**正确性兜底（P0 债 1–5）→ 离线闭环（注册表/DFN3/管线串联/批处理）→ RVC 变声 → 实时化**。
-- 架构演进：无头命令层（FR-24）、引擎注册表（NFR-M1，含 ErrInfo 结构化错误通道）、工作区版本化（FR-A4，含 GUI 片 B）**已落地**；下一步 FR-8 模型管理 → FR-9 管线串联。
+- 架构演进：无头命令层（FR-24）、引擎注册表（NFR-M1，含 ErrInfo 结构化错误通道）、工作区版本化（FR-A4，含 GUI 片 B）、模型管理（FR-8 片 A 核心+CLI）**已落地**；下一步 FR-8 片 B（GUI：模型面板/D8 modelMissing 信号）→ FR-9 管线串联。
 - 开放问题：仅剩 O3 RVC 延迟实测（实时化前，真机脉冲法；v1.2 定级「未证实」，变声链最坏算术 181ms 超支）。O1/O2/O4 已于 2026-10-14 调研关闭（`docs/reference/research-index.md`）；残余 = 发版前法务复核项（sherpa 书面确认、ContentVec 作者 MIT 声明确认——权重继承链已证不存在、Qwen 逐仓库 LICENSE 核对，随 NFR-C2 落实）。
 
 ## 红线
@@ -88,7 +90,7 @@ test/fft_test        FFT 性质 DUT（仅非 WIN32；FFT-PR 自检 + numpy 对�
 - 不引入 GPL 依赖；保持 LGPL/MIT 组合（D1 免费公开发布）。模型许可证逐个核验（文档第 6 节红线表）。
 - 不内置克隆音色模型；RVC 社区模型由用户导入，变声功能须带使用须知（NFR-C5）。
 - 一切处理保持流式、内存有界（NFR-P4：2h 音频峰值 RSS ≤2GB），禁止整文件载入。
-- 原件只读是新工作区机制（FR-A4 片 A 已落地 CLI 面）的根基：任何新功能不得改写用户源文件；新功能的落盘动词应提供工作区模式（带 `workspace` 字段），版本目录 append-only 不可改写。
+- 原件只读是新工作区机制（FR-A4 片 A 已落地 CLI 面）的根基：任何新功能不得改写用户源文件；新功能的落盘动词应提供工作区模式（带 `workspace` 字段），版本目录 append-only 不可改写。例外（OQ-8 拍板）：**共享资产动词不适用工作区**——模型库（FR-8 model 族）是跨工作区共享资产而非任务产物，入版本目录会造成每次下载一份副本且跨工作区引用断裂；以「新路径 + 原子写 + 登记失败删产物不留孤儿」等效机制满足本条红线本意。
 
 ---
 

@@ -18,3 +18,6 @@ inline constexpr auto kWsRootCacheFile = "index.json";// 工作区根级路径�
 inline constexpr auto kWsIndexFile = "workspace.json";// 工作区权威索引文件名（源登记 + 版本清单 + head）
 inline constexpr auto kWsDefaultRootName = "VideoHandler-Workspace";// 缺省工作区根目录名（用户主目录下，FR-A4 OQ-1）
 inline constexpr auto kSettingsWorkspaceRoot = "workspaceRoot";// QSettings 键：工作区根目录（仅 GUI 壳读写，D7 命令层/服务层不碰配置）
+inline constexpr auto kModelsIndexFile = "models.json";// 模型库清单文件名（缓存性登记非真相源：损坏按空处理、磁盘实况为准，FR-8 D1/D2）
+inline constexpr auto kModelsDefaultRootName = "VideoHandler-Models";// 缺省模型库根目录名（用户主目录下，FR-8 OQ-3）
+inline constexpr auto kDefaultModelEndpoint = "https://huggingface.co";// 缺省 HF endpoint（镜像经请求字段 endpoint 换前缀，FR-8 D4：参数归参数）
