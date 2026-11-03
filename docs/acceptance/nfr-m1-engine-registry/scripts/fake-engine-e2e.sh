@@ -3,7 +3,8 @@
 # gain（样本乘 10^(gainDb/20)），实证「新增引擎 = 新 .h/.cpp + 注册表追加条目 + CMake 两行，
 # 命令层/GUI/服务层零改」。断言：REG-001 改动面白名单 / REG-002 正例 e2e（result 全字段 +
 # RMS 比值 ≈ 10^(6/20)）/ REG-003..007 负例（消息模板与真引擎同构）/ REG-008 未注册动词拒收 /
-# REG-009..011 String 三态负例（Kind::String 分支唯一 e2e 覆盖）。
+# REG-009..011 String 三态负例（Kind::String 分支唯一 e2e 覆盖）/ REG-012..013 假引擎免改
+# 入 FR-9 管线（两步链 e2e + 步骤级参数预校验归属——注册表动词入链零额外接线）。
 # 方法论（OQ-1 拍板）：worktree 内先落「片 A 基线」临时 detached 提交（不入 main，用后丢弃），
 # 假引擎以未提交形态注入——git status 即白名单证据，main 历史零痕迹。
 # 依赖：git / cmake+Ninja（linux-test preset 同套，pkg-config Qt6Core/FFmpeg/SoundTouch）/
@@ -33,23 +34,24 @@ ln -s "$REPO/third_party" "$WT/third_party"
 # detached 提交不触 main（无分支引用，用后即弃）。文件清单 = 主树 vs HEAD 的 src/ 差异全集
 # ——完整性断言（审查 P2-1）：清单必须等于「主树 vs HEAD 差异 + untracked src/ 新文件」，
 #    漏拷纯逻辑改动会静默测试旧代码（接口改型类漏拷则构建破裂，此断言兜住其余形态）——
-# 清单 = 主树 vs HEAD 的 src/ 差异全集（随基线合入滚动更新：FR-A4 片 A/B 与 FR-8 片 A
-# （模型管理核心）已在 HEAD，当前基线 = FR-8 片 B 的未提交改动——GUI 面：两级缺省解析接线/
-# 结构化 modelMissing/模型管理对话框/QSettings 新键；+ 审查轮修复（modelmanager 导入进度））
+# 清单 = 主树 vs HEAD 的 src/ 差异全集（随基线合入滚动更新：FR-A4、FR-8 片 A+B 均已在 HEAD
+# （fc69173），当前基线 = FR-9 管线串联的未提交改动——命令层 staticCheck 抽取/cmdPipeline/
+# 工作区管线标记/GUI 管线壳（commandlayer/workspace/ffextractor/mediaservice/mainwidget））
 BASELINE_FILES=$(printf '%s\n' \
-    src/model/data.h src/service/ffextractor.cpp src/service/ffextractor.h \
+    src/service/commandlayer.cpp src/service/commandlayer.h \
+    src/service/ffextractor.cpp src/service/ffextractor.h \
     src/service/mediaservice.cpp src/service/mediaservice.h \
-    src/service/modelmanager.cpp \
+    src/service/workspace.cpp src/service/workspace.h \
     src/view/mainwidget.cpp src/view/mainwidget.h | sort)
 DRIFT_FILES=$( { git diff --name-only HEAD -- src/ CMakeLists.txt; git ls-files --others --exclude-standard src/; } | sort)
 if [ "$BASELINE_FILES" != "$DRIFT_FILES" ]; then
     echo "FAIL: 基线拷贝清单与主树实际漂移不一致（脚本清单过期，纯逻辑改动会被静默漏测）："
     diff <(echo "$BASELINE_FILES") <(echo "$DRIFT_FILES"); exit 1
 fi
-cp src/service/ffextractor.cpp src/service/ffextractor.h src/service/mediaservice.cpp \
-   src/service/mediaservice.h src/service/modelmanager.cpp "$WT/src/service/"
+cp src/service/commandlayer.cpp src/service/commandlayer.h src/service/ffextractor.cpp \
+   src/service/ffextractor.h src/service/mediaservice.cpp src/service/mediaservice.h \
+   src/service/workspace.cpp src/service/workspace.h "$WT/src/service/"
 cp src/view/mainwidget.cpp src/view/mainwidget.h "$WT/src/view/"
-cp src/model/data.h "$WT/src/model/"
 git -C "$WT" add -A
 git -C "$WT" -c user.name=nfr-m1 -c user.email=nfr-m1@local diff --cached --quiet \
     || git -C "$WT" -c user.name=nfr-m1 -c user.email=nfr-m1@local commit -q -m "NFR-M1 片 A/B 基线（临时 detached 提交，验收用后即弃）"
@@ -273,6 +275,22 @@ ex_nego REG-011 "note 不能为空"
 
 echo "== REG-008 未注册动词 → E_PARAMS「未知命令」且响应不回显 cmd =="
 jr REG-008 1 '{"v":1,"cmd":"frobnicate","input":"x"}' ok=false no-cmd code=E_PARAMS msg-contains=未知命令 absent:result
+
+echo "== REG-012/013 假引擎入 FR-9 管线（金标准延伸：新引擎免改即入链，参数校验/步骤归属透传）=="
+# REG-012：gain+gain 两步链（+6dB 后 −6dB）→ ok:true、steps[] 摘要含 cmd/version、两版本目录落位
+jr REG-012 0 "{\"v\":1,\"cmd\":\"pipeline\",\"input\":\"$W/in.wav\",\"workspace\":\"$W/regws\",\"steps\":[{\"cmd\":\"gain\",\"gainDb\":6,\"note\":\"a\"},{\"cmd\":\"gain\",\"gainDb\":-6,\"note\":\"b\"}]}" \
+    ok=true v=1 cmd=pipeline num:result.workspace.version=2 \
+    str:result.steps.0.cmd=gain str:result.steps.1.cmd=gain \
+    num:result.steps.0.version=1 num:result.steps.1.version=2 \
+    num:result.steps.0.frames=220500 num:result.steps.1.frames=220500 \
+    bool:result.steps.1.engineResampled=false exists:result.output
+[ -d "$W/regws" ] && [ "$(find "$W/regws" -mindepth 2 -maxdepth 2 -type d -name 'v00*_gain' | wc -l)" = 2 ]
+ck $? "REG-012r（两步版本目录 v001_gain/ + v002_gain/ 落位）"
+# REG-013：步 2 gainDb 越界 → 整链静态预校验拒收（步骤归属前缀 + step/stepCmd，消息模板与单动词同构）
+jr REG-013 1 "{\"v\":1,\"cmd\":\"pipeline\",\"input\":\"$W/in.wav\",\"workspace\":\"$W/regws2\",\"steps\":[{\"cmd\":\"gain\",\"gainDb\":6,\"note\":\"a\"},{\"cmd\":\"gain\",\"gainDb\":30,\"note\":\"b\"}]}" \
+    ok=false cmd=pipeline code=E_PARAMS num:error.step=2 str:error.stepCmd=gain \
+    msg-contains="步骤 2（gain）：gainDb 须在" absent:result
+[ ! -d "$W/regws2" ]; ck $? "REG-013r（预校验失败零执行：工作区目录不落盘）"
 
 echo "== worktree 清理（git worktree list 复核无残留）=="
 cleanup

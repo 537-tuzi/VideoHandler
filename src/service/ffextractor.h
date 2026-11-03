@@ -34,7 +34,10 @@ struct ProbeInfo {
 // FR-8 片 B：模型族三槽（doModelList/doModelDownload/doModelImport）同走 execute（GUI 不直调
 // ModelManager 的单一通路红线）；AI 降噪/人声分离缺省解析两级化（模型库已装 → appDir bundled，
 // 经 setModelRoot 注入的根，空串不查库 = 旧行为零漂移）；任务响应 E_MODEL 加发结构化信号
-// modelMissing（D8 首次使用引导，不走文案前缀匹配）
+// modelMissing（D8 首次使用引导，不走文案前缀匹配）。
+// FR-9：doPipeline 槽收步骤数组 JSON——对无显式 model 的模型步逐个 resolveDefaultModel 补缺省后
+// 组 pipeline 请求走同一 runRequest；链中 E_MODEL 的 forVerb 取 error.stepCmd（附裁 1：管线响应
+// cmd=pipeline，照搬请求动词会引导错用途模型）
 class FFExtractor : public QObject
 {
     Q_OBJECT
@@ -64,7 +67,7 @@ signals:
     void wsInfoDone(bool ok, const QString& json);// 处理历史查询完成（ok 时 json 为 result 的 Compact JSON，失败为错误说明）
     void modelListDone(bool ok, const QString& json);// 模型列表查询完成（wsInfoDone 同型：ok 时 json 为 result 的 Compact JSON，失败为错误说明）
     void modelOpDone(bool ok, const QString& message);// 模型下载/导入完成（长任务占 busy，MediaService 据此放锁；message 为壳重建文案或 error.message 直通）
-    void modelMissing();// 结构化缺模型信号（FR-8 D8）：任务 E_MODEL / 两级缺省解析皆缺时随 jobDone 加发，引导打开模型管理（不走文案前缀匹配）
+    void modelMissing(const QString& forVerb);// 结构化缺模型信号（FR-8 D8）：任务 E_MODEL / 两级缺省解析皆缺时随 jobDone 加发，引导打开模型管理（不走文案前缀匹配）；forVerb 为缺失模型所属引擎动词——管线链取 error.stepCmd（FR-9 附裁 1）
 public slots:
     void setWorkspaceRoot(const QString& root);// 注入工作区根（装配期 setCancelFlag 同型，经队列信号投递到 worker 线程）
     void setModelRoot(const QString& root);// 注入模型库根（setWorkspaceRoot 同型；两级缺省解析与模型族请求的 root 来源）
@@ -79,4 +82,5 @@ public slots:
     void doDenoiseAiWav(const QString& inPath);// 后台 AI 降噪转码（GTCRN）
     void doPitchWav(const QString& inPath, double semiTones);// 后台变调转码（SoundTouch）
     void doSepVocals(const QString& inPath, bool instrumental);// 后台人声分离/伴奏提取转码（MDX-Net）
+    void doPipeline(const QString& inPath, const QString& stepsJson);// 后台管线一键（FR-9：解析 steps → 模型步两级缺省解析 → 组 pipeline 请求走 runRequest）
 };

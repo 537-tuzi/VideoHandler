@@ -38,6 +38,7 @@ void MediaService::init_connect() {
     connect(this, &MediaService::modelListRequested, worker, &FFExtractor::doModelList);// 模型列表查询（wsInfo 同型只读不占 busy）
     connect(this, &MediaService::modelDownloadRequested, worker, &FFExtractor::doModelDownload);// 模型下载（占 busy，取消/进度经 Ctx）
     connect(this, &MediaService::modelImportRequested, worker, &FFExtractor::doModelImport);// 模型导入（占 busy）
+    connect(this, &MediaService::pipelineRequested, worker, &FFExtractor::doPipeline);// 管线一键（FR-9：占 busy，取消/进度经 Ctx 链内透传）
     connect(worker, &FFExtractor::progress, this, &MediaService::progress);
     connect(worker, &FFExtractor::jobDone, this, [this](bool ok, const QString& message) {
         busy = false;
@@ -133,4 +134,11 @@ void MediaService::denoiseWav(const QString& inPath, HumBase humBase, bool remov
     busy = true;
     cancelFlag = false;
     emit denoiseRequested(inPath, humBase, removeWind);// 队列投递到后台线程
+}
+
+void MediaService::pipeline(const QString& inPath, const QString& stepsJson) {
+    if (busy) return;
+    busy = true;
+    cancelFlag = false;
+    emit pipelineRequested(inPath, stepsJson);// 队列投递到后台线程（stepsJson 为步骤数组 Compact JSON）
 }

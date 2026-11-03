@@ -13,7 +13,10 @@ enum class HumBase;// hum 基频制式（定义在 dspdenoiser.h，信号参数�
 // 处理历史查询 wsInfo 与 probe 同型（只读不占 busy），大文件首查哈希在 worker 线程不冻 UI。
 // FR-8 片 B：模型族三对信号槽——modelList 只读不占 busy（wsInfo 先例）；modelDownload/
 // modelImport 占 busy + cancelFlag 透传 Ctx + 进度走既有 progress 信号（worker 线程内
-// downloadModel 的局部 QEventLoop 可正常 exec）；modelMissing 结构化信号原样转发（D8）
+// downloadModel 的局部 QEventLoop 可正常 exec）；modelMissing 结构化信号原样转发（D8）。
+// FR-9：pipeline 一对信号槽（stepsJson 以 QString 传 JSON，wsInfo/modelList 同型免自定义
+// QMetaType）；占 busy 与七槽同锁。modelMissing 载 forVerb（附裁 1：管线响应 cmd=pipeline，
+// 缺失动词以 error.stepCmd 为准，壳照搬「请求 cmd→动词」会引导错用途模型）
 class MediaService : public QObject
 {
     Q_OBJECT
@@ -41,13 +44,14 @@ signals:
     void modelListRequested();// 模型列表查询请求（FR-8 片 B，只读不占 busy）
     void modelDownloadRequested(const QString& id, const QString& endpoint);// 模型下载请求（FR-8 片 B，占 busy）
     void modelImportRequested(const QString& path, const QString& forVerb);// 模型导入请求（FR-8 片 B，占 busy）
+    void pipelineRequested(const QString& inPath, const QString& stepsJson);// 管线一键请求（FR-9 D8，占 busy；stepsJson 为步骤数组 Compact JSON）
     void progress(int pct);// 任务进度百分比
     void jobFinished(bool ok, const QString& message);// 任务完成通知
     void probeFinished(bool ok, const QString& info);// 文件探测完成
     void wsInfoFinished(bool ok, const QString& json);// 处理历史查询完成（ok 时 json 为 result 的 Compact JSON）
     void modelListFinished(bool ok, const QString& json);// 模型列表查询完成（ok 时 json 为 result 的 Compact JSON）
     void modelOpFinished(bool ok, const QString& message);// 模型下载/导入完成（busy 据此释放；message 为壳重建文案或 error.message 直通）
-    void modelMissing();// 结构化缺模型信号（FR-8 片 B，worker 原样转发，D8 引导钩子）
+    void modelMissing(const QString& forVerb);// 结构化缺模型信号（FR-8 片 B，worker 原样转发，D8 引导钩子；forVerb 为缺失模型所属引擎动词——管线链取 error.stepCmd，附裁 1）
 public slots:
     void setWorkspaceRoot(const QString& root);// 注入工作区根到 worker（GUI 线程读 QSettings 后调用，D7 边界）
     void setModelRoot(const QString& root);// 注入模型库根到 worker（FR-8 片 B，承载边界同上）
@@ -62,4 +66,5 @@ public slots:
     void denoiseAiWav(const QString& inPath);// 提交 AI 降噪任务，输出到工作区版本目录（根未注入时落源目录）
     void pitchWav(const QString& inPath, double semiTones);// 提交变调任务，输出到工作区版本目录（根未注入时落源目录）
     void sepVocals(const QString& inPath, bool instrumental);// 提交人声分离/伴奏提取任务，输出到工作区版本目录（根未注入时落源目录）
+    void pipeline(const QString& inPath, const QString& stepsJson);// 提交管线一键任务（FR-9 D8，占 busy；worker 解析 stepsJson、模型步两级缺省解析后组 pipeline 请求）
 };

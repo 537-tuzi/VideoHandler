@@ -25,7 +25,7 @@
 //        导入全链（QFileDialog 自动选文件 + 用途对话框捕获 §161 许可提示原文 + 提交）、
 //        endpoint/库根 QSettings 记忆写路径。
 //        弹窗自动应答：20ms 轮询 activeModalWidget——QMessageBox 按文案分流（「模型不可用」→Yes，
-//        其余→Ok），QFileDialog（文件模式 selectFile+accept / 目录模式 setDirectory+accept），
+//        其余→Ok），QFileDialog（文件模式行编辑直填+AcceptRole / 目录模式 setDirectory+accept），
 //        其余 QDialog 视为用途对话框：记录许可提示后点「导入」。
 #include <QApplication>
 #include <QComboBox>
@@ -124,7 +124,7 @@ static int runEngine(int argc, char* argv[]) {
 
 static int runGui(int argc, char* argv[]) {
     QApplication app(argc, argv);// offscreen（编排侧 QT_QPA_PLATFORM=offscreen；AA_DontUseNativeDialogs
-    // 已在 main 构造前置位：文件/目录对话框强制 Qt 控件实现，selectFile+accept 才可确定性自动应答）
+    // 已在 main 构造前置位：文件/目录对话框强制 Qt 控件实现，行编辑直填+确认键才可确定性自动应答）
     const QString wav = QString::fromLocal8Bit(argv[2]);
     const QString endpoint = QString::fromLocal8Bit(argv[3]);
     const QString modelRoot = QString::fromLocal8Bit(argv[4]);
@@ -163,8 +163,9 @@ static int runGui(int argc, char* argv[]) {
         } else if (auto* fd = qobject_cast<QFileDialog*>(m)) {// 静态文件/目录对话框自动完成
             if (fd->fileMode() == QFileDialog::Directory) fd->setDirectory(g_pickDir);
             else {
-                fd->selectFile(g_importPath);
-                if (auto* le = fd->findChild<QLineEdit*>()) le->setText(g_importPath);// 兜底直写文件名框
+                // 行编辑直填 + AcceptRole 确认（FR-9 测试轮 P3-2 同型加固：selectFile 的延迟选
+                // 在挂载 iso9660 卷的 offscreen 环境不落，Qt 6.10.2 文件模型停滞 → 空选不收尾）
+                if (auto* le = fd->findChild<QLineEdit*>()) le->setText(g_importPath);// 直写文件名框
             }
             if (auto* box = fd->findChild<QDialogButtonBox*>()) {// 走对话框自己的确认键（用户路径）
                 for (auto* b : box->buttons())

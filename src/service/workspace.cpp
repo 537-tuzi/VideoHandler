@@ -292,6 +292,8 @@ bool commitVersion(const VersionPlan& plan, const QJsonObject& params, const QJs
     else rec.insert(QStringLiteral("model"), model);
     rec.insert(QStringLiteral("parentVersion"),
                plan.parentVersion > 0 ? QJsonValue(plan.parentVersion) : QJsonValue(QJsonValue::Null));
+    if (!plan.pipeline.isEmpty())// 管线标记按存在性插键（FR-9 D5/附裁 4）：非管线任务不含 → 逐字节零漂移
+        rec.insert(QStringLiteral("pipeline"), plan.pipeline);
     rec.insert(QStringLiteral("output"), out);
 
     QJsonArray versions = idx.value(QStringLiteral("versions")).toArray();

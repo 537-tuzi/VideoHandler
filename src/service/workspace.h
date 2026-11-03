@@ -22,6 +22,7 @@ struct VersionPlan {
     int version = 0;// 版本号 NNN（单调递增，跳过既有孤儿目录不复用）
     QJsonObject input;// 本次任务输入登记 {path, sha256, sizeBytes}
     int parentVersion = 0;// 输入为本工作区某版本产物时的父版本号（0 = 无）
+    QJsonObject pipeline;// 可选管线标记 {index,total}（FR-9 D5/附裁 4；空对象 = 非管线任务，commit 不插键）
 };
 
 // 两段提交第一段：定位/建工作区（根级缓存 stat 命中免哈希；miss 全量 sha256 定身份后回填缓存）+ 规划并
@@ -30,8 +31,9 @@ bool planVersion(const QString& root, const QString& input, const QString& cmd, 
 
 // 两段提交第二段：任务成功后原子登记（QSaveFile 重写 workspace.json：追加版本记录 + head 推进 + 同内容
 // 换路径时刷新源登记路径）。taskResult 为命令层 ok 响应的 result 对象（取 output 绝对路径与
-// outputSpec/frames/durationSec/truncated 如实入记录）。索引写失败 = 任务失败：版本目录（含产物）已由
-// 本函数删除、索引保持旧貌，返回 false + E_FILE
+// outputSpec/frames/durationSec/truncated 如实入记录）；plan.pipeline 非空时记录含 pipeline:{index,total}
+// 可选键（FR-9 D5），空则不含——非管线任务的 workspace.json 逐字节零漂移。索引写失败 = 任务失败：
+// 版本目录（含产物）已由本函数删除、索引保持旧貌，返回 false + E_FILE
 bool commitVersion(const VersionPlan& plan, const QJsonObject& params, const QJsonValue& model,
                    const QJsonObject& taskResult, ErrInfo* err);
 

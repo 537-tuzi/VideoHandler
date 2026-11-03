@@ -92,4 +92,12 @@ MDLTMP="$PWD/$BUILD/.mdl-tmp" # 绝对路径：mktemp 跟随 TMPDIR 相对时会
 mkdir -p "$MDLTMP" # 复用目录，跑批 trap 自清内部工作区
 TMPDIR="$MDLTMP" bash docs/acceptance/fr8-model-management/scripts/run-models.sh "$BUILD"
 
+echo "== 管线串联（FR-9：PIPE 用例族，CLI 面 + GUI 壳；工作区走磁盘卷 TMPDIR 同 mdl 原因——"
+echo "   30min 素材×多个 f32 产物 ≈600MB×n 会撞 /tmp 配额，见 run-pipe.sh 头注）=="
+PIPETMP="$PWD/$BUILD/.pipe-tmp" # 绝对路径，同 MDLTMP 口径
+mkdir -p "$PIPETMP" # 复用目录，跑批 trap 自清内部工作区
+TMPDIR="$PIPETMP" bash docs/acceptance/fr9-pipeline/scripts/run-pipe.sh "$BUILD"
+TMPDIR="$PIPETMP" bash docs/acceptance/fr9-pipeline/scripts/gui-pipe.sh "$BUILD"
+TMPDIR="$PIPETMP" bash docs/acceptance/fr9-pipeline/scripts/missing-text.sh "$BUILD" # round-2：Fix 2 用途文案三态回归锁（MIST 族）
+
 echo "== ci-smoke 全绿 =="

@@ -1,0 +1,98 @@
+case,round-1,round-2,说明
+PIPE-OK-001,PASS,PASS,两步链 denoise(60)→pitch(+2) 48k 源：ok:true/cmd=pipeline/result 键集恰等 {output、steps、truncated、workspace}、steps 摘要含 cmd/version/outputSpec、engineResampled=false（跟随源免重采样）
+PIPE-OK-002,PASS,PASS,终产物 = 末步产物（result.output 与 steps 末项 output 同一文件）
+PIPE-OK-003,PASS,PASS,版本目录落位 v001_denoise/ + v002_pitch/（一步一版本 D5）
+PIPE-OK-004,PASS,PASS,终产物 ffprobe pcm_f32le、48000、2（输出规格跟随源）
+PIPE-OK-005,PASS,PASS,中间产物（步 1 产物）ffprobe pcm_f32le、48000、2（中间产物即完整单动词产物，f32 WAV）
+PIPE-OK-006,PASS,PASS,workspace.json：head=2、两版本各带 pipeline:{index、total}、步 2 parentVersion=1
+PIPE-OK-007,PASS,PASS,三步链 transcode→denoise(50、wind)→pitch(-3)：版本号连续 1..3、steps 全量、44.1k 源 frames=220500
+PIPE-OK-008,PASS,PASS,带模型链 aiDenoise→separate（48k 源）：步 1 engineResampled=true、两步均锁兜底 44.1k/2ch（canonical-rate 口径）
+PIPE-OK-009,PASS,PASS,带模型链中间产物 ffprobe pcm_f32le、44100、2
+PIPE-OK-010,PASS,PASS,带模型链终产物 ffprobe pcm_f32le、44100、2
+PIPE-EQV-001,PASS,PASS,管线跑（denoise(60、wind)→pitch(+2)）ok:true（等价护栏 A 侧）
+PIPE-EQV-002,PASS,PASS,手动逐步跑 步 1 denoise（同参数、同字节输入副本，B 侧）
+PIPE-EQV-003,PASS,PASS,手动逐步跑 步 2 pitch（以步 1 产物为输入）
+PIPE-EQV-004,PASS,PASS,终产物逐字节一致 cmp（管线 vs 手动，核心护栏 D1 组合非复制）
+PIPE-EQV-005,PASS,PASS,中间产物逐字节一致 cmp（管线步 1 vs 手动步 1）
+PIPE-EQV-006,PASS,PASS,带模型链（aiDenoise→separate）管线跑 ok:true
+PIPE-EQV-007,PASS,PASS,手动 aiDenoise（模型链等价 D 侧）
+PIPE-EQV-008,PASS,PASS,手动 separate（以 aiDenoise 产物为输入）
+PIPE-EQV-009,PASS,PASS,带模型链终产物逐字节一致 cmp
+PIPE-CHAIN-001,PASS,PASS,链（denoise→pitch）后接手动单任务再接同链：版本号交错场景铺设
+PIPE-CHAIN-002,PASS,PASS,手动 pitch(+4) 插入链间（v003 无 pipeline 标记）
+PIPE-CHAIN-003,PASS,PASS,再跑同链（v004/v005）
+PIPE-CHAIN-004,PASS,PASS,workspace.json：head=5、版本 1..5、链版本带 pipeline 标记而手动版本无（键存在性插键）、parent 链各归各（v5.parent=4）
+PIPE-CHAIN-005,PASS,PASS,步骤记录 params 纯度：只含该步引擎参数（filled 形态），链级键 input/output/workspace/v/steps 不泄入（风险 2）
+PIPE-CHAIN-006,PASS,PASS,删除根级缓存 index.json 后链续定位：同工作区目录、版本号续 7（resolveWsDir 扫根目录兜底）
+PIPE-PREVAL-001,PASS,PASS,"步 2 semi 越界 → 开工前拦截 E_PARAMS、消息逐字「步骤 2（pitch）：semi 须在 [-12, 12] 内」、step=2/stepCmd=pitch"
+PIPE-PREVAL-002,PASS,PASS,步 2 semi=0 → 「步骤 2（pitch）：semi 不能为 0」（rejectZero 语义前缀同构）
+PIPE-PREVAL-003,PASS,PASS,步 2 denoise 无可执行项 → 「步骤 2（denoise）：humBase 为 off 且 wind 为 false：没有可执行的降噪项」（semanticCheck 前缀同构）
+PIPE-PREVAL-004,PASS,PASS,步 1 参数错（humBase=61）→ step=1/stepCmd=denoise（首步拦截同样带归属）
+PIPE-PREVAL-005,PASS,PASS,步 2 模型路径不存在 → E_MODEL 开工前拦截（文件存在性属 staticCheck 静态段）
+PIPE-PREVAL-006,PASS,PASS,零执行实证：预校验失败后工作区根无任何目录
+PIPE-PREVAL-007,PASS,PASS,零执行实证：源文件 sha256 不变（原件只读）
+PIPE-FAIL-001,PASS,PASS,步 2 垃圾字节模型（文件在盘过静态检查）→ 链中 E_MODEL：前缀「步骤 2（aiDenoise）：」+ step=2/stepCmd=aiDenoise
+PIPE-FAIL-002,PASS,PASS,工作区目录在（步 1 已登记提交）
+PIPE-FAIL-003,PASS,PASS,workspace.json：head=1 仅 v001（cmd=transcode、pipeline={index:1、total:2}）——已提交步保留（D5）
+PIPE-FAIL-004,PASS,PASS,失败步无版本目录残迹（discard 兜底不留孤儿）
+PIPE-FAIL-005,PASS,PASS,v001 产物可独立复用：对其跑单动词 pitch 成功且版本号续 2
+PIPE-FAIL-006,PASS,PASS,失败后重跑同链：v003 起新号（孤儿不复用、号不回卷）
+PIPE-FAIL-007,PASS,PASS,workspace.json：head=3、[1、2、3]（v2=复用产物、v3=重跑步 1）
+PIPE-FAIL-008,PASS,PASS,维度错位模型（craft-mismatch 配方）：setup 全过首推理抛错 → E_ENGINE 同样带步骤归属（异常屏障 + stepError 改造）
+PIPE-NEG-001,PASS,PASS,缺 workspace → E_PARAMS「pipeline 必须带 workspace」（D6 强制工作区）
+PIPE-NEG-002,PASS,PASS,steps 缺失 → 「steps 缺失」
+PIPE-NEG-003,PASS,PASS,steps 非数组 → 「steps 必须是数组」
+PIPE-NEG-004,PASS,PASS,steps 空数组 → 「steps 至少需要 2 步」（附裁 2）
+PIPE-NEG-005,PASS,PASS,steps 单元素 → 「steps 至少需要 2 步」
+PIPE-NEG-006,PASS,PASS,steps 元素非对象 → 「steps[1] 必须是对象」
+PIPE-NEG-007,PASS,PASS,步骤缺 cmd → 「steps[0] 缺少 cmd」
+PIPE-NEG-008,PASS,PASS,cmd 非字符串 → 「steps[0] 的 cmd 必须是字符串」
+PIPE-NEG-009,PASS,PASS,内置动词 probe 入链 → 「steps[0] 的 cmd 不可链式：probe（仅引擎动词可入链）」
+PIPE-NEG-010,PASS,PASS,内置动词 extractAudio 入链 → 不可链式
+PIPE-NEG-011,PASS,PASS,内置动词 modelList 入链 → 不可链式
+PIPE-NEG-012,PASS,PASS,嵌套自链 pipeline 入 pipeline → 不可链式（递归深度有界为 1，D2/D9）
+PIPE-NEG-013,PASS,PASS,步骤带 input → 「steps[0] 未知字段：input」（链级键拒收：输入由链编排）
+PIPE-NEG-014,PASS,PASS,步骤带 output → 「steps[1] 未知字段：output」（产物落版本目录）
+PIPE-NEG-015,PASS,PASS,步骤带 workspace → 「steps[1] 未知字段：workspace」（全链一根）
+PIPE-NEG-016,PASS,PASS,步骤带 v → 「steps[0] 未知字段：v」
+PIPE-NEG-017,PASS,PASS,步骤带未知参数 bogus → 「steps[1] 未知字段：bogus」（引擎参数白名单外）
+PIPE-NEG-018,PASS,PASS,信封级 output → 「未知字段：output」（allowsOutput=false 白名单先于互斥拒收；spec §6.6 措辞偏差见 round-1.md）
+PIPE-NEG-019,PASS,PASS,schema 段错误不带 step/stepCmd（归属键只随 stepError 产生）
+PIPE-CAN-001,PASS,PASS,cancel-pre：标志预置 → 步 1 开工前 E_CANCELLED、message 逐字「已取消」（不缀前缀，GUI 静默特判依赖）、step=1、零进度回调
+PIPE-CAN-002,PASS,PASS,开工前取消连工作区目录都不建
+PIPE-CAN-003,PASS,PASS,cancel-mid：首个进度回调置位 → 步 1 块循环检查点取消（step=1）
+PIPE-CAN-004,PASS,PASS,cancel-mid 版本目录已 discard 无残迹
+PIPE-CAN-005,PASS,PASS,cancel-between：步 1 完成后步 2 开工前取消 → step=2、「已取消」逐字、进度止于映射值 50（=(0+100)/2）
+PIPE-CAN-006,PASS,PASS,cancel-between：v001 已提交保留（head=1 带 pipeline 标记，D5 部分失败保留已提交步）
+PIPE-PROG-001,PASS,PASS,三步链进度等分映射（(i*100+pct)/n）：终值 100、单调不回退、步界值 33/66 可观测（D4/OQ-2(a)）
+PIPE-GUIE-001,PASS,PASS,GUI worker 壳 ok-chain：jobDone 文案「管线完成：<终产物路径>」（附裁 5）、进度终值 100、产物在盘、无 modelMissing
+PIPE-GUIE-002,PASS,PASS,ok-chain workspace.json：head=2、v001 带 pipeline 标记
+PIPE-GUIE-003,PASS,PASS,missing-step1（appDir 无模型）：文案「找不到AI 降噪模型：…」+ modelMissing(forVerb=aiDenoise)（两级缺省解析皆缺，七槽同型）
+PIPE-GUIE-004,PASS,PASS,emid-chain（appDir 降噪模型为垃圾字节）：链中步 2 E_MODEL → forVerb=error.stepCmd=aiDenoise（附裁 1：响应 cmd=pipeline 而引导动词照搬请求动词会得 "pipeline"）
+PIPE-GUIE-005,PASS,PASS,emid-negative：E_FILE 失败不触发 modelMissing（结构化信号仅随 E_MODEL 的负例守卫）
+PIPE-GUIE-006,PASS,PASS,cancel-between：GUI 语义取消 → message 逐字「已取消」（mainwidget 静默特判兼容）
+PIPE-GUIE-007,PASS,PASS,cancel-between：v001 保留（head=1）
+PIPE-MEM-001,PASS,PASS,30min 两步链峰值 RSS 与最重单动词同量级（≤单动词最大+32MB 且 <256MB，远低于整文件 regime ≈635MB；逐遍有界=全程有界，NFR-P4/D1）
+PIPE-MEM-002,PASS,PASS,内存抽测同场终产物与手动逐步跑逐字节一致 cmp
+PIPE-GUI-001,PASS,PASS,widget 面：文件载入后一键按钮解禁（openFile 使能面）
+PIPE-GUI-002,PASS,PASS,预设 1「AI 降噪 → 人声分离」组包：stepsJson 深度比对 [{aiDenoise}、{separate}]（预设不带动态参数，面板态不影响）
+PIPE-GUI-003,PASS,PASS,预设 2「DSP 降噪 → 人声分离」组包（hum=60）：denoise 步 humBase="60"/wind=true 动态注入
+PIPE-GUI-004,PASS,PASS,预设 2 组包（hum 未勾选）：humBase="off"（wind 独立仍 true）
+PIPE-GUI-005,PASS,PASS,预设 3「人声分离 → 变调」组包：pitch 步 semi=2.5 取变调框当前值
+PIPE-GUI-006,PASS,PASS,busy 锁覆盖新按钮：4 case 提交即锁（btnPipeline+cmbPipeline）/完成即解
+PIPE-GUI-007,PASS,PASS,4 case 成功文案均为「管线完成：<终产物路径>」（附裁 5）
+PIPE-REG-012,PASS,PASS,假引擎 gain 免改入链（fake-engine-e2e）：gain+gain 两步链 e2e ok:true、steps 摘要 cmd/version、两版本目录 v001_gain/+v002_gain 落位
+PIPE-REG-013,PASS,PASS,假引擎步骤级参数预校验：步 2 gainDb 越界 → E_PARAMS「步骤 2（gain）：gainDb 须在 …」+ step/stepCmd、零执行零落盘（注册表动词入链零额外接线）
+PIPE-MEM-003,,PASS,带模型链（120s aiDenoise→separate）实跑成功 ok:true 前置防空转（链失败提前退出会峰值虚低致同量级断言假绿；审查轮 P2-1 补面）
+PIPE-MEM-004,,PASS,"带模型链峰值与最重单动词同量级：1,517,592KB ≤ 1,515,180KB+32MB 且 <2GiB（NFR-P4；GTCRN 会话随遍释放零叠加，D1 模型面实证；审查代理补测 1,517,716/1,515,008KB 吻合）"
+MIST-001,,PASS,前置健康：载入后一键按钮解禁（missing-text 探针，round-2 补面）
+MIST-002,,PASS,真实链路锚：ai 相位 jobFinished 失败出自管线链步 1 预解析（找不到AI 降噪模型：——证明问询源为链中 E_MODEL 而非其他）
+MIST-003,,PASS,核心红绿：aiDenoise 问询文案逐字「AI 降噪模型不可用，是否打开模型管理下载？」（旧通用文案必红——Fix 2 回归锁）
+MIST-004,,PASS,ai 问询 Yes → 模型管理对话框打开（引导链回归）
+MIST-005,,PASS,真实链路锚：sep 相位任务失败出自管线链预解析（找不到人声分离模型：）
+MIST-006,,PASS,核心红绿：separate 问询文案逐字「人声分离模型不可用，是否打开模型管理下载？」（旧实现必红）
+MIST-007,,PASS,sep 问询 Yes → 模型管理对话框打开
+MIST-008,,PASS,退路守卫：未登记动词（futureVerb 信号直发）落通用文案逐字（防御分支；Qt6 信号公可直接 emit 实证）
+MIST-009,,PASS,退路负断言：通用文案不含「AI 降噪/人声分离」（未登记不误入映射；交叉映射也在此暴露）
+MIST-010,,PASS,未登记动词问询 Yes → 对话框打开（引导链与 forVerb 无关的一致性）
+MIST-011,,PASS,探针三触发完整收尾（PROBE DONE——无中途崩溃/挂死）

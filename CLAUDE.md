@@ -27,8 +27,9 @@ VideoHandler — Qt6 Widgets + FFmpeg + ONNX Runtime 的音频处理桌面软件
   video_handler --sep-instrumental <in> <out.wav> [model.onnx]
   ```
   另有 `--extract-audio <in>` / `--extract-video <in>`（FFExtractor 流复制，输出到源目录）；argc≥3 即进 CLI，无参数启动 GUI。
-- **FR-24 无头命令面**：`video_handler --json`（请求从 stdin 读 UTF-8 JSON，stdout 恒回单个 JSON 文档；动词 transcode/denoise/aiDenoise/pitch/separate/probe/extractAudio/extractVideo/wsInfo + FR-8 增 modelList/modelDownload/modelImport，schema/错误码/结果对象契约见 `docs/spec/fr24-command-layer.md`）；上面 7 个旧动词与 GUI 七槽（片 D）是同一核心（`CommandLayer::execute`）的薄壳，验收 `docs/acceptance/fr24-command-layer/`（CMD-*/GUI-* 用例，CMD-* 随 ci-smoke 跑）。
+- **FR-24 无头命令面**：`video_handler --json`（请求从 stdin 读 UTF-8 JSON，stdout 恒回单个 JSON 文档；动词 transcode/denoise/aiDenoise/pitch/separate/probe/extractAudio/extractVideo/wsInfo + FR-8 增 modelList/modelDownload/modelImport + FR-9 增 pipeline，schema/错误码/结果对象契约见 `docs/spec/fr24-command-layer.md`）；上面 7 个旧动词与 GUI 七槽（片 D）是同一核心（`CommandLayer::execute`）的薄壳，验收 `docs/acceptance/fr24-command-layer/`（CMD-*/GUI-* 用例，CMD-* 随 ci-smoke 跑）。
 - **FR-A4 工作区（片 A+B 已落地）**：请求带 `workspace:<根目录>` 即工作区模式——产物落 `<根>/<stem>.<hash8>/vNNN_<cmd>/`、result 增量带 `workspace:{root,dir,version}`、版本记录含来源链（filled 参数/输入哈希/模型摘要/parentVersion/输出真值+truncated）；`workspace` 与 `output` 互斥、probe/wsInfo 拒收；不带则 direct 模式行为零漂移。`wsInfo` 只读查询（root+input）。GUI 七槽缺省走工作区无开关硬切（QSettings 只记根路径、单点插键在 `FFExtractor::runRequest`、busy 期间历史/继续不击穿任务锁）。契约 `docs/spec/fr-a4-workspace.md`，验收 `docs/acceptance/fr-a4-workspace/`（WS+GWS 族随 ci-smoke 跑）。
+- **FR-9 管线串联（片 A CLI + 片 B GUI 已落地）**：`pipeline` 动词收 `steps:[{cmd,...}...]`（≥2 步、仅引擎动词、步骤字段={cmd}∪该引擎 isDeclaredParam、禁收 input/output/workspace/v）——整链静态预校验（逐步 staticCheck 不调 create，任何一步不合法零执行零产物）后逐步组合 `execute`（中间产物 f32 WAV、末步输出即 result.output）；工作区强制（缺 `workspace` 即 E_PARAMS），一步一版本并带 `pipeline:{index,total}` 标记（D5/附裁 4，非管线任务 workspace.json 逐字节零漂移）；失败归属 error 增 `step/stepCmd`、message 前缀「步骤 N（cmd）：」（E_CANCELLED 例外逐字「已取消」）；进度等分映射 `(i*100+pct)/total`。GUI 片 B：预设下拉三条 + 一键执行（denoise 步 humBase/wind、pitch 步 semi 取当前面板动态注入，模型步两级缺省解析在 worker、链中 E_MODEL 的 modelMissing.forVerb 取 error.stepCmd 附裁 1，成功文案「管线完成：<终产物路径>」）。契约 `docs/spec/fr9-pipeline.md`，验收 `docs/acceptance/fr9-pipeline/`（PIPE 族随 ci-smoke 跑；Windows 真机随 round-4 挂账）。
 - **FR-8 模型管理（片 A+B 已落地）**：三动词 modelList（免 input 免 busy 只读）/modelDownload（幂等：登记 sha+size 即信零网络；.part 是续传缓存非任务产物，NFR-R1 豁免）/modelImport（by-id 指纹登记 / 自由导入 `for`+setup 试开，license=unknown 用户自核；复制段带进度 0–99+收尾 100）；模型库 = `<root>/<用途>/` + models.json（缺省根 `~/VideoHandler-Models`，`root` 字段可带，与 workspace-root 同型不读环境变量）；endpoint 请求字段换镜像前缀（仅 hfSource 条目，UI 有适用性注记）；model 族拒 workspace（共享资产非任务产物，等效机制=新路径+原子写+登记失败删产物）；信封 requiresInput 豁免后旧动词零漂移。片 B GUI：引擎动词缺省模型两级解析（库内登记优先——`bundled` 视角在位不遮蔽用户导入，缺省才落 appDir 随包）、runRequest `E_MODEL`→结构化 `modelMissing` 信号→问询引导模型管理对话框（五列树/下载/取消/进度条/endpoint 组合框含镜像注记/换根/导入两段含 §161 许可提示）；QSettings 两键（modelRoot/modelEndpoint）只在 GUI 主线程读写。契约 `docs/spec/fr8-model-management.md`（D1–D9+§7.1 拍板），验收 `docs/acceptance/fr8-model-management/`（MDL+GML 族随 ci-smoke 跑，工作区走磁盘卷 TMPDIR 防 /tmp 配额假象）。
 - 暂无单测框架；引擎正确性验收 = parity 测试（对照官方实现，−60dB RMS 准入，NFR-Q1，WP-1.1 已建）：随 ci-smoke 跑（`docs/acceptance/engine-parity/scripts/run_parity.sh`），缺 Python 参考依赖的族整族 SKIP、`PARITY_REQUIRED=1` 时升级 FAIL；换参考实现版本后 `gen_golden.py --force` 重生成金样本。
 
@@ -36,9 +37,9 @@ VideoHandler — Qt6 Widgets + FFmpeg + ONNX Runtime 的音频处理桌面软件
 
 ```
 main.cpp            CLI 分支（argc>=3）或 GUI；GUI 为组合根（MediaService 注入 MainWidget）
-view/mainwidget     唯一窗口；信号槽转发；模型管理对话框 + modelMissing 问询引导（FR-8 片 B，QSettings 两键只在主线程读写）
-service/mediaservice QThread worker 调度 + busy 锁 + 取消原子量（一次一任务）；modelList 不占 busy、下载/导入占（FR-8 片 B）
-service/commandlayer FR-24 无头命令层：execute(QJsonObject,Ctx)→QJsonObject 纯函数（严格校验 + 六类错误码 E_*）；--json 走 stdin/stdout 单 JSON 文档；旧 7 动词是其薄壳；分发=双查表（NFR-M1 片 A：engineregistry 引擎表 → 内置 probe/extract 小表 → 未命中 E_PARAMS）
+view/mainwidget     唯一窗口；信号槽转发；模型管理对话框 + modelMissing 问询引导（FR-8 片 B，QSettings 两键只在主线程读写）；管线预设下拉 + 一键执行（FR-9 片 B，动态参数取当前面板）
+service/mediaservice QThread worker 调度 + busy 锁 + 取消原子量（一次一任务）；modelList 不占 busy、下载/导入占（FR-8 片 B）；pipeline 占 busy 同锁（FR-9）
+service/commandlayer FR-24 无头命令层：execute(QJsonObject,Ctx)→QJsonObject 纯函数（严格校验 + 六类错误码 E_*）；--json 走 stdin/stdout 单 JSON 文档；旧 7 动词是其薄壳；分发=双查表（NFR-M1 片 A：engineregistry 引擎表 → 内置 probe/extract 小表 → 未命中 E_PARAMS）；cmdPipeline 管线执行器（FR-9：steps 整链静态预校验 + 逐步组合 execute，Ctx.pipelineIndex/Total 为版本标记内部通路）
 service/engineregistry NFR-M1 引擎注册表：转码族 5 动词自描述条目（ParamSpec 校验 schema/工厂闭包吞 setup 异构/setupErrorClass/lockCanonical/后缀），validateParams 是引擎参数校验消息的唯一权威（信封字段模板仍在 commandlayer；与旧处理器逐字兼容）；新增引擎=新 .h/.cpp+表条目+CMake 两行，命令层/GUI/服务层零改（NFR-M1 片 B 已落地：错误码在产生点与文案同点诞生，消费方透传 errCodeText——前缀匹配 classify*/isFileError 已删，OQ-4 三处承载面修正送包解码/写包/写尾 E_INTERNAL→E_FILE）
 service/workspace    FR-A4 工作区版本化核心（片 A 已落地）：planVersion/commitVersion/discardVersion/queryInfo 两段提交外壳——身份=内容哈希（根级缓存 path+size+mtimeMs 三键加速，miss 先哈希再扫根目录 `*.<hash8>` 复用既有工作区）、版本目录 vNNN_<cmd> append-only（号不复用孤儿、可回收已删占位）、workspace.json 权威索引 QSaveFile 原子写（登记失败=任务失败删产物不留孤儿）；哈希 64KiB 流式（NFR-P4 口径）
 service/modelmanager FR-8 模型管理核心（片 A 已落地）：内置目录表（编译期 2 条目，sha/URL 与 fetch-deps.sh 同源）+ models.json 库清单（QSaveFile/损坏按空/磁盘实况为准）+ modelList 三视角合并 + QNAM 下载器（HEAD 解析→ETag 对照→Range 续 .part→64KiB 增量写→流式 sha256→同卷 rename→登记；幂等「登记 sha+size 即信」）+ 导入两形态（by-id 指纹 / 自由导入 create 闭包试开，占用三规则防双 id 同路径与 id 遮蔽；复制段进度 0–99+收尾 100）；进程外下载模型须 QCoreApplication 在位（main 已补）
@@ -81,7 +82,7 @@ test/fft_test        FFT 性质 DUT（仅非 WIN32；FFT-PR 自检 + numpy 对�
 ## 方向（详见 REQUIREMENTS.md 第 9 节）
 
 - 执行顺序：**正确性兜底（P0 债 1–5）→ 离线闭环（注册表/DFN3/管线串联/批处理）→ RVC 变声 → 实时化**。
-- 架构演进：无头命令层（FR-24）、引擎注册表（NFR-M1，含 ErrInfo 结构化错误通道）、工作区版本化（FR-A4，含 GUI 片 B）、模型管理（FR-8 片 A 核心+CLI + 片 B GUI：两级缺省解析/modelMissing 引导/模型管理对话框）**已落地**；下一步 FR-9 管线串联。
+- 架构演进：无头命令层（FR-24）、引擎注册表（NFR-M1，含 ErrInfo 结构化错误通道）、工作区版本化（FR-A4，含 GUI 片 B）、模型管理（FR-8 片 A 核心+CLI + 片 B GUI：两级缺省解析/modelMissing 引导/模型管理对话框）、管线串联（FR-9 片 A CLI + 片 B GUI：pipeline 动词/整链预校验/逐步组合 execute/版本标记/预设一键）**已落地**；下一步按 REQUIREMENTS §9 排序（主线程收口拍板）。
 - 开放问题：仅剩 O3 RVC 延迟实测（实时化前，真机脉冲法；v1.2 定级「未证实」，变声链最坏算术 181ms 超支）。O1/O2/O4 已于 2026-10-14 调研关闭（`docs/reference/research-index.md`）；残余 = 发版前法务复核项（sherpa 书面确认、ContentVec 作者 MIT 声明确认——权重继承链已证不存在、Qwen 逐仓库 LICENSE 核对，随 NFR-C2 落实）。
 
 ## 红线

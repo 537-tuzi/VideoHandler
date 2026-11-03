@@ -441,9 +441,13 @@ void FFExtractor::runRequest(const QJsonObject& req, const QString& okMsg) {
         // 失败文案直通 error.message：E_CANCELLED 的 message 即「已取消」，mainwidget 特判逐字命中
         emit jobDone(false, error.value(QStringLiteral("message")).toString());
         // 结构化缺模型信号（FR-8 片 B，D8）：E_MODEL = 模型文件缺失/损坏（引擎 setup 失败同域），
-        // 除文案外加发可编程识别的引导钩子——不走文案前缀匹配（NFR-M1 片 B P3-1 教训）
-        if (error.value(QStringLiteral("code")).toString() == QLatin1String("E_MODEL"))
-            emit modelMissing();
+        // 除文案外加发可编程识别的引导钩子——不走文案前缀匹配（NFR-M1 片 B P3-1 教训）。
+        // FR-9 附裁 1：管线响应 cmd=pipeline，缺失动词以 error.stepCmd 为准（照搬请求动词会引导
+        // 错用途模型）；单动词请求无 stepCmd，回落请求 cmd（aiDenoise/separate）
+        if (error.value(QStringLiteral("code")).toString() == QLatin1String("E_MODEL")) {
+            const QString stepCmd = error.value(QStringLiteral("stepCmd")).toString();
+            emit modelMissing(stepCmd.isEmpty() ? request.value(QStringLiteral("cmd")).toString() : stepCmd);
+        }
     }
 }
 
@@ -469,7 +473,7 @@ void FFExtractor::doDenoiseAiWav(const QString& inPath) {
     const QString model = resolveDefaultModel(QStringLiteral("aiDenoise"), bundled);
     if (!QFileInfo::exists(model)) {
         emit jobDone(false, QStringLiteral("找不到 AI 降噪模型：%1").arg(bundled));
-        emit modelMissing();
+        emit modelMissing(QStringLiteral("aiDenoise"));
         return;
     }
     QJsonObject req;
@@ -494,7 +498,7 @@ void FFExtractor::doSepVocals(const QString& inPath, bool instrumental) {
     const QString model = resolveDefaultModel(QStringLiteral("separate"), bundled);
     if (!QFileInfo::exists(model)) {
         emit jobDone(false, QStringLiteral("找不到人声分离模型：%1").arg(bundled));
-        emit modelMissing();
+        emit modelMissing(QStringLiteral("separate"));
         return;
     }
     QJsonObject req;
@@ -519,4 +523,48 @@ void FFExtractor::doExtractVideo(const QString& inPath) {
     req.insert(QStringLiteral("cmd"), QStringLiteral("extractVideo"));
     req.insert(QStringLiteral("input"), inPath);// 不传 output：缺省自动命名与现状同规则
     runRequest(req, QStringLiteral("无声视频提取完成"));
+}
+
+// 管线一键（FR-9 D8）：stepsJson 为步骤数组 Compact JSON（QString 传 JSON，wsInfo 同型）。
+// 壳只做两件事——解析数组、给无显式 model 的模型步逐个补两级缺省解析（与七槽同一
+// resolveDefaultModel；verb→bundled 相对路径映射同 doDenoiseAiWav/doSepVocals 写法）；此后组
+// pipeline 请求走统一 runRequest，schema/静态预校验/链式执行全部由命令层承担。两级皆缺时
+// 文案/信号同单槽形态（jobDone 文案 + modelMissing(动词) 引导，附裁 1 用途不漂）
+void FFExtractor::doPipeline(const QString& inPath, const QString& stepsJson) {
+    QJsonParseError pe{};
+    const QJsonDocument doc = QJsonDocument::fromJson(stepsJson.toUtf8(), &pe);
+    if (pe.error != QJsonParseError::NoError || !doc.isArray()) {
+        emit jobDone(false, QStringLiteral("管线步骤解析失败"));
+        return;
+    }
+    QJsonArray steps = doc.array();
+    for (int i = 0; i < steps.size(); ++i) {
+        QJsonObject step = steps.at(i).toObject();
+        const QString verb = step.value(QStringLiteral("cmd")).toString();
+        QString rel, disp;
+        if (verb == QLatin1String("aiDenoise")) {
+            rel = kAiModelRelPath;
+            disp = QStringLiteral("AI 降噪");
+        } else if (verb == QLatin1String("separate")) {
+            rel = kSepModelRelPath;
+            disp = QStringLiteral("人声分离");
+        } else {
+            continue;// 非模型步无缺省解析（transcode/denoise/pitch）
+        }
+        if (step.contains(QStringLiteral("model"))) continue;// 显式 model 已在，GUI 预设组的就是解析结果
+        const QString bundled = QCoreApplication::applicationDirPath() + "/" + rel;
+        const QString model = resolveDefaultModel(verb, bundled);
+        if (!QFileInfo::exists(model)) {
+            emit jobDone(false, QStringLiteral("找不到%1模型：%2").arg(disp, bundled));
+            emit modelMissing(verb);
+            return;
+        }
+        step.insert(QStringLiteral("model"), model);
+        steps.replace(i, step);
+    }
+    QJsonObject req;
+    req.insert(QStringLiteral("cmd"), QStringLiteral("pipeline"));
+    req.insert(QStringLiteral("input"), inPath);
+    req.insert(QStringLiteral("steps"), steps);
+    runRequest(req, QStringLiteral("管线完成"));// 成功文案「管线完成：<终产物路径>」（附裁 5，runRequest 拼 output）
 }

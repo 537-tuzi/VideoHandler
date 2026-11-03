@@ -34,6 +34,15 @@ namespace {
 QString modelSizeText(double bytes) {// 目录表 sizeBytes → MiB 一位小数（模型管理列表展示）
     return QStringLiteral("%1 MiB").arg(bytes / (1024.0 * 1024.0), 0, 'f', 1);
 }
+
+// 管线预设三条（FR-9 OQ-3(a) 拍板）：只定链形（动词序），denoise/pitch 步的动态参数
+// （humBase/wind/semi）组包时取当前面板值注入（doPipeline）；预设均为两步链
+const struct { const char* name; const char* verbs[2]; } kPipePresets[] = {
+    {"AI 降噪 → 人声分离", {"aiDenoise", "separate"}},
+    {"DSP 降噪 → 人声分离", {"denoise", "separate"}},
+    {"人声分离 → 变调", {"separate", "pitch"}},
+};
+constexpr int kPipePresetCount = sizeof(kPipePresets) / sizeof(kPipePresets[0]);
 }// namespace
 
 MainWidget::MainWidget(QWidget* parent)
@@ -42,6 +51,7 @@ MainWidget::MainWidget(QWidget* parent)
       btnDenoise(nullptr), btnAi(nullptr), btnPitch(nullptr), btnSep(nullptr), btnInstrumental(nullptr), btnCancel(nullptr),
       btnWsChange(nullptr), btnHistory(nullptr), btnModels(nullptr),
       chkHum(nullptr), cmbHumBase(nullptr), chkWind(nullptr), spinSemi(nullptr),
+      cmbPipeline(nullptr), btnPipeline(nullptr),
       lblFile(nullptr), lblWs(nullptr), lblStatus(nullptr), txtInfo(nullptr), bar(nullptr),
       modelDlg(nullptr), modelTree(nullptr), modelBar(nullptr),
       btnModelDownload(nullptr), btnModelImport(nullptr), btnModelCancel(nullptr),
@@ -62,20 +72,29 @@ void MainWidget::build_ui() {
     btnInstrumental = new QPushButton(QStringLiteral("伴奏提取导出WAV"), this);
     btnCancel = new QPushButton(QStringLiteral("取消任务"), this);
     chkHum = new QCheckBox(QStringLiteral("除电流声"), this);
+    chkHum->setObjectName(QStringLiteral("chkHum"));
     cmbHumBase = new QComboBox(this);
+    cmbHumBase->setObjectName(QStringLiteral("cmbHumBase"));// 探针锚（FR-9 管线预设动态参数注入面）
     cmbHumBase->addItem(QStringLiteral("50Hz"));
     cmbHumBase->addItem(QStringLiteral("60Hz"));// 电网制式：50/60Hz 陷波基频
     cmbHumBase->setCurrentIndex(QSettings().value(QStringLiteral("humBaseHz"), 50).toInt() == 60 ? 1 : 0);// 记住上次选择，缺省 50Hz
     cmbHumBase->setEnabled(true);// chkHum 缺省勾选；随勾选状态联动见 init_connect
     chkWind = new QCheckBox(QStringLiteral("除风声(低频)"), this);
+    chkWind->setObjectName(QStringLiteral("chkWind"));
     chkHum->setChecked(true);
     chkWind->setChecked(true);
     spinSemi = new QDoubleSpinBox(this);
+    spinSemi->setObjectName(QStringLiteral("spinSemi"));
     spinSemi->setRange(-12.0, 12.0);
     spinSemi->setSingleStep(1.0);
     spinSemi->setDecimals(1);
     spinSemi->setValue(0.0);
     spinSemi->setSuffix(QStringLiteral(" 半音"));
+    cmbPipeline = new QComboBox(this);// 管线预设下拉（FR-9）：条目 = 静态预设表（链形见 kPipePresets）
+    cmbPipeline->setObjectName(QStringLiteral("cmbPipeline"));
+    for (const auto& p : kPipePresets) cmbPipeline->addItem(QString::fromUtf8(p.name));
+    btnPipeline = new QPushButton(QStringLiteral("一键执行"), this);
+    btnPipeline->setObjectName(QStringLiteral("btnPipeline"));
     lblFile = new QLabel(QStringLiteral("未选择文件"), this);
     // 工作区根（FR-A4 片 B，D5/OQ-1）：QSettings 只在此读（GUI 线程，D7），缺省 ~/VideoHandler-Workspace
     workspaceRoot = QSettings().value(QString::fromUtf8(kSettingsWorkspaceRoot),
@@ -107,6 +126,7 @@ void MainWidget::build_ui() {
     btnPitch->setEnabled(false);
     btnSep->setEnabled(false);
     btnInstrumental->setEnabled(false);
+    btnPipeline->setEnabled(false);
     btnCancel->setEnabled(false);
     btnHistory->setEnabled(false);// wsInfo 契约 = root+input，未载入文件时无查询对象
     bar->hide();// 没任务时不占位
@@ -134,6 +154,9 @@ void MainWidget::build_ui() {
     pitchRow->addWidget(btnSep);
     pitchRow->addWidget(btnInstrumental);
     pitchRow->addWidget(btnCancel);
+    auto* pipeRow = new QHBoxLayout;// 管线一键（FR-9）：预设下拉 + 一键执行；成功文案「管线完成：<终产物路径>」（附裁 5）
+    pipeRow->addWidget(cmbPipeline);
+    pipeRow->addWidget(btnPipeline);
 
     auto* lay = new QVBoxLayout(this);
     lay->addLayout(topRow);
@@ -142,6 +165,7 @@ void MainWidget::build_ui() {
     lay->addLayout(actRow);
     lay->addLayout(denRow);
     lay->addLayout(pitchRow);
+    lay->addLayout(pipeRow);
     lay->addWidget(bar);
     lay->addWidget(lblStatus);
 }
@@ -158,6 +182,7 @@ void MainWidget::init_connect() {
     connect(btnPitch, &QPushButton::clicked, this, &MainWidget::doPitchWav);
     connect(btnSep, &QPushButton::clicked, this, &MainWidget::doSepVocals);
     connect(btnInstrumental, &QPushButton::clicked, this, &MainWidget::doSepInstrumental);
+    connect(btnPipeline, &QPushButton::clicked, this, &MainWidget::doPipeline);// 管线一键（FR-9）
     connect(btnCancel, &QPushButton::clicked, this, &MainWidget::doCancel);
     connect(chkHum, &QCheckBox::toggled, cmbHumBase, &QComboBox::setEnabled);// 不除电流声时制式选择无效
     connect(cmbHumBase, &QComboBox::currentIndexChanged, this, [this](int idx) {
@@ -191,6 +216,7 @@ void MainWidget::openFile(const QString& path) {
         btnPitch->setEnabled(true);
         btnSep->setEnabled(true);
         btnInstrumental->setEnabled(true);
+        btnPipeline->setEnabled(true);
         btnHistory->setEnabled(true);
         txtInfo->setPlainText(QStringLiteral("正在读取流信息…"));
         lblStatus->setText(QStringLiteral("读取中…"));
@@ -538,12 +564,20 @@ void MainWidget::onModelOpDone(bool ok, const QString& message) {
     else if (message != QStringLiteral("已取消")) QMessageBox::warning(this, QString::fromUtf8(kAppTitle), message);
 }
 
-// 缺模型引导（D8/OQ-7(a)，结构化信号触发，非文案前缀匹配）：问询打开模型管理；附 F-2 等长篡改
-// 边界的解药文案——下载幂等只校验 sizeBytes，等长翻字节命中不了重下，删除模型文件后重下才治愈
-// （对话框无删除功能 D5——「打开目录」即达：清单 stale → 重下治愈，审查轮 P2-1 改指向真实能力）
-void MainWidget::onModelMissing() {
+// 缺模型引导（D8/OQ-7(a)，结构化信号触发，非文案前缀匹配）：问询打开模型管理，文案带用途
+// （审查轮 P3-1：信号本载 forVerb——管线链中取 error.stepCmd（附裁 1）——壳此前丢参弹通用
+// 文案，把「该下哪个用途的模型」留给用户猜）；附 F-2 等长篡改边界的解药文案——下载幂等只校验
+// sizeBytes，等长翻字节命中不了重下，删除模型文件后重下才治愈（对话框无删除功能 D5——
+// 「打开目录」即达：清单 stale → 重下治愈，审查轮 P2-1 改指向真实能力）
+void MainWidget::onModelMissing(const QString& forVerb) {
+    // 用途名映射（与七槽/预设文案同词）；未登记动词（未来注册表新引擎）退通用文案
+    QString purpose;
+    if (forVerb == QLatin1String("aiDenoise")) purpose = QStringLiteral("AI 降噪");
+    else if (forVerb == QLatin1String("separate")) purpose = QStringLiteral("人声分离");
     QMessageBox box(QMessageBox::Question, QString::fromUtf8(kAppTitle),
-                    QStringLiteral("模型不可用，是否打开模型管理下载？"),
+                    purpose.isEmpty()
+                        ? QStringLiteral("模型不可用，是否打开模型管理下载？")
+                        : QStringLiteral("%1模型不可用，是否打开模型管理下载？").arg(purpose),
                     QMessageBox::Yes | QMessageBox::No, this);
     box.setInformativeText(QStringLiteral("若下载后模型仍不可用，请在模型管理中打开库目录，删除该模型文件后重新下载。"));
     box.setDefaultButton(QMessageBox::Yes);
@@ -611,6 +645,33 @@ void MainWidget::doSepInstrumental() {
     media->sepVocals(curFile, true);
 }
 
+// 管线一键（FR-9）：链形取预设表，动态参数取当前面板（denoise 步 humBase 跟随下拉/wind 跟随勾选、
+// pitch 步 semi 跟随变调框）；组 stepsJson 交 worker（模型步两级缺省解析在 worker 侧，与七槽同源）。
+// off+off、semi=0 等参数非法不在 GUI 重复判——命令层整链静态预校验给步骤级错误（薄壳原则）
+void MainWidget::doPipeline() {
+    if (!media || curFile.isEmpty()) return;
+    const int idx = cmbPipeline->currentIndex();
+    if (idx < 0 || idx >= kPipePresetCount) return;
+    QJsonArray steps;
+    for (const char* verb : kPipePresets[idx].verbs) {
+        QJsonObject step;
+        step.insert(QStringLiteral("cmd"), QString::fromLatin1(verb));
+        if (QLatin1String(verb) == QLatin1String("denoise")) {
+            step.insert(QStringLiteral("humBase"),
+                        chkHum->isChecked()
+                            ? (cmbHumBase->currentIndex() == 1 ? QStringLiteral("60") : QStringLiteral("50"))
+                            : QStringLiteral("off"));
+            step.insert(QStringLiteral("wind"), chkWind->isChecked());
+        } else if (QLatin1String(verb) == QLatin1String("pitch")) {
+            step.insert(QStringLiteral("semi"), spinSemi->value());
+        }
+        steps.append(step);
+    }
+    set_busy(true);
+    lblStatus->setText(QStringLiteral("管线处理中（共 %1 步）…").arg(steps.size()));
+    media->pipeline(curFile, QString::fromUtf8(QJsonDocument(steps).toJson(QJsonDocument::Compact)));
+}
+
 void MainWidget::doCancel() {
     if (media) media->cancelJob();
 }
@@ -638,6 +699,8 @@ void MainWidget::set_busy(bool on) {
     btnPitch->setEnabled(!on);
     btnSep->setEnabled(!on);
     btnInstrumental->setEnabled(!on);
+    btnPipeline->setEnabled(!on);
+    cmbPipeline->setEnabled(!on);// 预设切换只在空闲态（运行中换预设无意义且易误读状态行）
     btnCancel->setEnabled(on);
     btnWsChange->setEnabled(!on);// 换根只对后续任务生效，任务期间不换（worker 单线程排队会延迟生效）
     btnHistory->setEnabled(!on && !curFile.isEmpty());// 查询排 worker 队，任务期间点了也要等任务跑完，干脆锁住

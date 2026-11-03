@@ -1,12 +1,12 @@
 #pragma once
 
 // 主窗口：文件导入 + 音视频分离操作面板 + 工作区根展示/修改与处理历史（FR-A4 片 B）+
-// 模型管理对话框（FR-8 片 B）。
+// 模型管理对话框（FR-8 片 B）+ 管线一键（FR-9：静态预设三条下拉 + 一键执行）。
 // QSettings 只在本层（GUI 线程）读写（D7 边界）：工作区根读入后经 MediaService 下传 worker，
 // 七槽任务缺省走工作区（无开关硬切，OQ-2 拍板），历史对话框数据来自 worker 线程的 wsInfo 查询；
 // 模型库根/下载源 endpoint 同型承载（FR-8 D1/D4：modelRoot/modelEndpoint 两键，缺省根
 // ~/VideoHandler-Models、缺省源 huggingface.co）；模型下载/导入占 busy（对话框内进度条与
-// 主进度条同源联动，spec D8）
+// 主进度条同源联动，spec D8）；管线预设只定链形，denoise/pitch 步动态参数组包时取当前面板
 
 #include <QWidget>
 #include <QString>
@@ -41,6 +41,7 @@ public slots:
     void doPitchWav();// 提交变调转码
     void doSepVocals();// 提交人声分离转码
     void doSepInstrumental();// 提交伴奏提取转码
+    void doPipeline();// 提交管线一键（FR-9：预设链形 + 面板动态参数组 stepsJson，worker 侧模型步补缺省）
     void doCancel();// 请求取消当前任务
     void onProgress(int pct);// 刷新进度条
     void onJobDone(bool ok, const QString& msg);// 任务结果落地
@@ -48,7 +49,7 @@ public slots:
     void onWsInfoDone(bool ok, const QString& json);// 处理历史查询落地（渲染版本清单对话框）
     void onModelListDone(bool ok, const QString& json);// 模型列表落地（渲染模型管理对话框表格）
     void onModelOpDone(bool ok, const QString& message);// 模型下载/导入落地（放锁 + 刷新列表）
-    void onModelMissing();// 缺模型引导：问询打开模型管理对话框（D8/OQ-7，结构化信号触发）
+    void onModelMissing(const QString& forVerb);// 缺模型引导：问询打开模型管理对话框（D8/OQ-7，结构化信号触发；文案带用途——管线链 forVerb 取 error.stepCmd，FR-9 附裁 1）
 private:
     void build_ui();// 搭界面
     void buildModelDialog();// 搭模型管理对话框（首次打开创建一次：列表/下载/导入/进度/endpoint/库根）
@@ -78,6 +79,8 @@ private:
     QComboBox* cmbHumBase;// hum 陷波基频制式（50/60Hz，勾选除电流声时使能）
     QCheckBox* chkWind;
     QDoubleSpinBox* spinSemi;
+    QComboBox* cmbPipeline;// 管线预设下拉（FR-9，三条静态预设）
+    QPushButton* btnPipeline;// 一键执行管线（FR-9，占 busy；成功文案「管线完成：<终产物路径>」）
     QLabel* lblFile;
     QLabel* lblWs;// 工作区根展示
     QLabel* lblStatus;
