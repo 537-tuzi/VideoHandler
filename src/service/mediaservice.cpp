@@ -39,6 +39,7 @@ void MediaService::init_connect() {
     connect(this, &MediaService::modelDownloadRequested, worker, &FFExtractor::doModelDownload);// 模型下载（占 busy，取消/进度经 Ctx）
     connect(this, &MediaService::modelImportRequested, worker, &FFExtractor::doModelImport);// 模型导入（占 busy）
     connect(this, &MediaService::pipelineRequested, worker, &FFExtractor::doPipeline);// 管线一键（FR-9：占 busy，取消/进度经 Ctx 链内透传）
+    connect(this, &MediaService::batchRequested, worker, &FFExtractor::doBatch);// 批处理（FR-10：busy 整批一锁，worker 逐件组合 execute）
     connect(worker, &FFExtractor::progress, this, &MediaService::progress);
     connect(worker, &FFExtractor::jobDone, this, [this](bool ok, const QString& message) {
         busy = false;
@@ -54,6 +55,11 @@ void MediaService::init_connect() {
         emit modelOpFinished(ok, message);
     });
     connect(worker, &FFExtractor::modelMissing, this, &MediaService::modelMissing);// 结构化引导信号原样转发（D8）
+    connect(worker, &FFExtractor::batchFinished, this, [this](bool ok, const QString& jsonOrMessage) {
+        busy = false;// 整批结束才释放（FR-10 D5：与七槽/管线/模型操作同一把锁，件间无锁窗）
+        cancelFlag = false;
+        emit batchFinished(ok, jsonOrMessage);
+    });
 }
 
 void MediaService::cancelJob() {
@@ -141,4 +147,11 @@ void MediaService::pipeline(const QString& inPath, const QString& stepsJson) {
     busy = true;
     cancelFlag = false;
     emit pipelineRequested(inPath, stepsJson);// 队列投递到后台线程（stepsJson 为步骤数组 Compact JSON）
+}
+
+void MediaService::batch(const QString& inputsJson, const QString& stepsJson) {
+    if (busy) return;
+    busy = true;// 整批占 busy 一次（D5）：worker 逐件 execute 期间无 jobDone，件间不存在锁窗
+    cancelFlag = false;
+    emit batchRequested(inputsJson, stepsJson);// 队列投递到后台线程（两 JSON 均 Compact）
 }

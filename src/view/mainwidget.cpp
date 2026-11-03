@@ -18,6 +18,7 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QProgressBar>
@@ -35,6 +36,10 @@ QString modelSizeText(double bytes) {// 目录表 sizeBytes → MiB 一位小数
     return QStringLiteral("%1 MiB").arg(bytes / (1024.0 * 1024.0), 0, 'f', 1);
 }
 
+// 文件对话框过滤器（doOpen 与 doBatchAdd 同源单点——审查 P3-3：两份字面量拷贝会漂移）
+const QString kMediaFilter = QStringLiteral(
+    "媒体文件 (*.mp4 *.mkv *.mov *.avi *.flv *.webm *.ts *.m4a *.mp3 *.wav *.aac *.flac *.ogg *.opus);;所有文件 (*)");
+
 // 管线预设三条（FR-9 OQ-3(a) 拍板）：只定链形（动词序），denoise/pitch 步的动态参数
 // （humBase/wind/semi）组包时取当前面板值注入（doPipeline）；预设均为两步链
 const struct { const char* name; const char* verbs[2]; } kPipePresets[] = {
@@ -43,6 +48,19 @@ const struct { const char* name; const char* verbs[2]; } kPipePresets[] = {
     {"人声分离 → 变调", {"separate", "pitch"}},
 };
 constexpr int kPipePresetCount = sizeof(kPipePresets) / sizeof(kPipePresets[0]);
+
+// 批处理单动词动作五条（FR-10 OQ-6(a)）：动作组合前 5 项 = 引擎动词单步（separate 双 stem 拆两条），
+// 后 3 项 = 管线预设（kPipePresets 顺序）；无 transcode（格式转换无「批处理清理」场景语义）。
+// stem 空 = 该动词无 stem 参数（denoise/aiDenoise/pitch）；动态参数（humBase/wind/semi）组包时
+// 取当前面板（doPipeline 同一面）
+const struct { const char* name; const char* verb; const char* stem; } kBatchSingleActions[] = {
+    {"DSP 降噪", "denoise", nullptr},
+    {"AI 降噪", "aiDenoise", nullptr},
+    {"变调", "pitch", nullptr},
+    {"人声分离", "separate", "vocals"},
+    {"伴奏提取", "separate", "instrumental"},
+};
+constexpr int kBatchSingleCount = sizeof(kBatchSingleActions) / sizeof(kBatchSingleActions[0]);
 }// namespace
 
 MainWidget::MainWidget(QWidget* parent)
@@ -51,11 +69,13 @@ MainWidget::MainWidget(QWidget* parent)
       btnDenoise(nullptr), btnAi(nullptr), btnPitch(nullptr), btnSep(nullptr), btnInstrumental(nullptr), btnCancel(nullptr),
       btnWsChange(nullptr), btnHistory(nullptr), btnModels(nullptr),
       chkHum(nullptr), cmbHumBase(nullptr), chkWind(nullptr), spinSemi(nullptr),
-      cmbPipeline(nullptr), btnPipeline(nullptr),
+      cmbPipeline(nullptr), btnPipeline(nullptr), btnBatch(nullptr),
       lblFile(nullptr), lblWs(nullptr), lblStatus(nullptr), txtInfo(nullptr), bar(nullptr),
       modelDlg(nullptr), modelTree(nullptr), modelBar(nullptr),
       btnModelDownload(nullptr), btnModelImport(nullptr), btnModelCancel(nullptr),
-      btnModelOpenDir(nullptr), btnModelRootChange(nullptr), cmbModelEndpoint(nullptr), lblModelRoot(nullptr)
+      btnModelOpenDir(nullptr), btnModelRootChange(nullptr), cmbModelEndpoint(nullptr), lblModelRoot(nullptr),
+      batchDlg(nullptr), lstBatchFiles(nullptr), cmbBatchAction(nullptr),
+      btnBatchAdd(nullptr), btnBatchRemove(nullptr), btnBatchClear(nullptr), btnBatchStart(nullptr)
 {
     build_ui();
     init_connect();
@@ -95,6 +115,8 @@ void MainWidget::build_ui() {
     for (const auto& p : kPipePresets) cmbPipeline->addItem(QString::fromUtf8(p.name));
     btnPipeline = new QPushButton(QStringLiteral("一键执行"), this);
     btnPipeline->setObjectName(QStringLiteral("btnPipeline"));
+    btnBatch = new QPushButton(QStringLiteral("批处理…"), this);// FR-10：清单在对话框内自选，入口不依赖当前文件
+    btnBatch->setObjectName(QStringLiteral("btnBatch"));
     lblFile = new QLabel(QStringLiteral("未选择文件"), this);
     // 工作区根（FR-A4 片 B，D5/OQ-1）：QSettings 只在此读（GUI 线程，D7），缺省 ~/VideoHandler-Workspace
     workspaceRoot = QSettings().value(QString::fromUtf8(kSettingsWorkspaceRoot),
@@ -154,9 +176,11 @@ void MainWidget::build_ui() {
     pitchRow->addWidget(btnSep);
     pitchRow->addWidget(btnInstrumental);
     pitchRow->addWidget(btnCancel);
-    auto* pipeRow = new QHBoxLayout;// 管线一键（FR-9）：预设下拉 + 一键执行；成功文案「管线完成：<终产物路径>」（附裁 5）
+    auto* pipeRow = new QHBoxLayout;// 管线一键（FR-9）：预设下拉 + 一键执行 + 批处理入口（FR-10）
     pipeRow->addWidget(cmbPipeline);
     pipeRow->addWidget(btnPipeline);
+    pipeRow->addStretch(1);
+    pipeRow->addWidget(btnBatch);
 
     auto* lay = new QVBoxLayout(this);
     lay->addLayout(topRow);
@@ -183,6 +207,7 @@ void MainWidget::init_connect() {
     connect(btnSep, &QPushButton::clicked, this, &MainWidget::doSepVocals);
     connect(btnInstrumental, &QPushButton::clicked, this, &MainWidget::doSepInstrumental);
     connect(btnPipeline, &QPushButton::clicked, this, &MainWidget::doPipeline);// 管线一键（FR-9）
+    connect(btnBatch, &QPushButton::clicked, this, &MainWidget::openBatchDialog);// 批处理入口（FR-10）
     connect(btnCancel, &QPushButton::clicked, this, &MainWidget::doCancel);
     connect(chkHum, &QCheckBox::toggled, cmbHumBase, &QComboBox::setEnabled);// 不除电流声时制式选择无效
     connect(cmbHumBase, &QComboBox::currentIndexChanged, this, [this](int idx) {
@@ -199,6 +224,7 @@ void MainWidget::setMediaService(MediaService* svc) {
         connect(media, &MediaService::wsInfoFinished, this, &MainWidget::onWsInfoDone);
         connect(media, &MediaService::modelListFinished, this, &MainWidget::onModelListDone);// FR-8 片 B
         connect(media, &MediaService::modelOpFinished, this, &MainWidget::onModelOpDone);
+        connect(media, &MediaService::batchFinished, this, &MainWidget::onBatchDone);// FR-10：批处理落地
         connect(media, &MediaService::modelMissing, this, &MainWidget::onModelMissing);// 结构化引导（D8）
         media->setWorkspaceRoot(workspaceRoot);// 启动即下传（QSettings 只在本层读，D7）
         media->setModelRoot(modelRoot);// FR-8 片 B：两级缺省解析与模型族请求的根
@@ -226,8 +252,7 @@ void MainWidget::openFile(const QString& path) {
 }
 
 void MainWidget::doOpen() {
-    QString file = QFileDialog::getOpenFileName(this, QStringLiteral("选择音视频文件"), QString(),
-        QStringLiteral("媒体文件 (*.mp4 *.mkv *.mov *.avi *.flv *.webm *.ts *.m4a *.mp3 *.wav *.aac *.flac *.ogg *.opus);;所有文件 (*)"));
+    QString file = QFileDialog::getOpenFileName(this, QStringLiteral("选择音视频文件"), QString(), kMediaFilter);
     if (!file.isEmpty()) openFile(file);
 }
 
@@ -584,6 +609,184 @@ void MainWidget::onModelMissing(const QString& forVerb) {
     if (box.exec() == QMessageBox::Yes) openModelDialog();
 }
 
+// 打开批处理对话框（FR-10）：非模态 show()（openModelDialog 同型——主面板状态行/进度条仍可见，
+// 批处理整批占 busy 与其他任务同锁），首次打开创建一次后复用；清单跨打开保留（对话框仅隐藏不销毁）
+void MainWidget::openBatchDialog() {
+    if (!batchDlg) buildBatchDialog();
+    batchDlg->show();
+    batchDlg->raise();
+    batchDlg->activateWindow();
+}
+
+// 搭批处理对话框（一次性，FR-10 D8）：上排动作组合（8 条 = 5 引擎动词单步 + 3 管线预设，
+// OQ-6(a)：无 transcode）；中清单（UserRole = 绝对路径）；下排添加/移除/清空/开始。
+// objectName 供验收探针 findChild 定位（gui-slot-eqv 同族锚）
+void MainWidget::buildBatchDialog() {
+    batchDlg = new QDialog(this);// 有父但 show() 非模态；随主窗析构
+    batchDlg->setObjectName(QStringLiteral("batchDlg"));
+    batchDlg->setWindowTitle(QStringLiteral("批处理"));
+    cmbBatchAction = new QComboBox(batchDlg);
+    cmbBatchAction->setObjectName(QStringLiteral("cmbBatchAction"));
+    for (const auto& a : kBatchSingleActions) cmbBatchAction->addItem(QString::fromUtf8(a.name));
+    for (const auto& p : kPipePresets) cmbBatchAction->addItem(QString::fromUtf8(p.name));// 预设链与前 5 项同名不冲突（条目文案含动词链描述）
+    auto* actRow = new QHBoxLayout;
+    actRow->addWidget(new QLabel(QStringLiteral("动作"), batchDlg));
+    actRow->addWidget(cmbBatchAction, 1);
+
+    lstBatchFiles = new QListWidget(batchDlg);
+    lstBatchFiles->setObjectName(QStringLiteral("lstBatchFiles"));
+    lstBatchFiles->setSelectionBehavior(QAbstractItemView::SelectRows);
+    lstBatchFiles->setSelectionMode(QAbstractItemView::ExtendedSelection);// 移除可多选
+    lstBatchFiles->setEditTriggers(QAbstractItemView::NoEditTriggers);// 清单只读（增删走按钮）
+
+    btnBatchAdd = new QPushButton(QStringLiteral("添加文件…"), batchDlg);
+    btnBatchAdd->setObjectName(QStringLiteral("btnBatchAdd"));
+    btnBatchRemove = new QPushButton(QStringLiteral("移除选中"), batchDlg);
+    btnBatchRemove->setObjectName(QStringLiteral("btnBatchRemove"));
+    btnBatchClear = new QPushButton(QStringLiteral("清空"), batchDlg);
+    btnBatchClear->setObjectName(QStringLiteral("btnBatchClear"));
+    btnBatchStart = new QPushButton(QStringLiteral("开始"), batchDlg);
+    btnBatchStart->setObjectName(QStringLiteral("btnBatchStart"));
+    auto* btnRow = new QHBoxLayout;
+    btnRow->addWidget(btnBatchAdd);
+    btnRow->addWidget(btnBatchRemove);
+    btnRow->addWidget(btnBatchClear);
+    btnRow->addStretch(1);
+    btnRow->addWidget(btnBatchStart);
+
+    auto* lay = new QVBoxLayout(batchDlg);
+    lay->addLayout(actRow);
+    lay->addWidget(lstBatchFiles);
+    lay->addLayout(btnRow);
+    batchDlg->resize(560, 360);
+
+    connect(btnBatchAdd, &QPushButton::clicked, this, &MainWidget::doBatchAdd);
+    connect(btnBatchRemove, &QPushButton::clicked, this, &MainWidget::doBatchRemove);
+    connect(btnBatchClear, &QPushButton::clicked, this, &MainWidget::doBatchClear);
+    connect(btnBatchStart, &QPushButton::clicked, this, &MainWidget::doBatchStart);
+}
+
+// 清单添加（FR-10 D2）：多选文件（过滤器与 doOpen 同一），QFileInfo::absoluteFilePath 字符串级
+// 去重（与命令层 inputs 重复拒收同口径）；清单项文本显示文件名（路径长清单可读），UserRole 存绝对路径
+void MainWidget::doBatchAdd() {
+    const QStringList files = QFileDialog::getOpenFileNames(batchDlg, QStringLiteral("选择要批处理的文件"), QString(), kMediaFilter);
+    for (const QString& f : files) {
+        const QString abs = QFileInfo(f).absoluteFilePath();
+        bool dup = false;
+        for (int i = 0; i < lstBatchFiles->count(); ++i)
+            if (lstBatchFiles->item(i)->data(Qt::UserRole).toString() == abs) { dup = true; break; }
+        if (dup) continue;// 重复文件静默跳过（多选含已添加项是常态，弹窗打扰）
+        auto* item = new QListWidgetItem(QFileInfo(abs).fileName(), lstBatchFiles);
+        item->setData(Qt::UserRole, abs);
+    }
+}
+
+void MainWidget::doBatchRemove() {
+    const QList<QListWidgetItem*> sel = lstBatchFiles->selectedItems();
+    for (QListWidgetItem* item : sel) delete item;
+}
+
+void MainWidget::doBatchClear() {
+    lstBatchFiles->clear();
+}
+
+// 开始批处理（FR-10 D8）：≥2 件守卫（命令层同下限，GUI 前置给可读状态行）；动作组合取当前索引
+// 组共享模板（单动词 = 1 步、预设 = 2 步链），动态参数取当前面板（doPipeline 同一面：denoise 步
+// humBase/wind、pitch 步 semi）；组 {inputs, steps} 两 Compact JSON 交 MediaService::batch
+//（模板模型步两级缺省解析在 worker 侧，与管线同源）。off+off、semi=0 等参数非法不在 GUI 重复判
+//——命令层模板静态预校验给步骤级错误（薄壳原则，开工前零副作用）
+void MainWidget::doBatchStart() {
+    if (!media || !batchDlg) return;
+    const int n = lstBatchFiles->count();
+    if (n < 2) {
+        lblStatus->setText(QStringLiteral("批处理至少需要 2 个文件"));
+        return;
+    }
+    const int idx = cmbBatchAction->currentIndex();
+    if (idx < 0) return;
+    QJsonArray steps;
+    if (idx < kBatchSingleCount) {// 前 5 项：单动词动作（separate 带 stem；denoise/pitch 注入面板动态参数）
+        QJsonObject step;
+        step.insert(QStringLiteral("cmd"), QString::fromLatin1(kBatchSingleActions[idx].verb));
+        if (QLatin1String(kBatchSingleActions[idx].verb) == QLatin1String("denoise")) {
+            step.insert(QStringLiteral("humBase"),
+                        chkHum->isChecked()
+                            ? (cmbHumBase->currentIndex() == 1 ? QStringLiteral("60") : QStringLiteral("50"))
+                            : QStringLiteral("off"));
+            step.insert(QStringLiteral("wind"), chkWind->isChecked());
+        } else if (QLatin1String(kBatchSingleActions[idx].verb) == QLatin1String("pitch")) {
+            step.insert(QStringLiteral("semi"), spinSemi->value());
+        } else if (kBatchSingleActions[idx].stem) {
+            step.insert(QStringLiteral("stem"), QString::fromLatin1(kBatchSingleActions[idx].stem));
+        }
+        steps.append(step);
+    } else {// 后 3 项：管线预设（kPipePresets 顺序，动态参数注入与 doPipeline 同面）
+        const int p = idx - kBatchSingleCount;
+        if (p < 0 || p >= kPipePresetCount) return;
+        for (const char* verb : kPipePresets[p].verbs) {
+            QJsonObject step;
+            step.insert(QStringLiteral("cmd"), QString::fromLatin1(verb));
+            if (QLatin1String(verb) == QLatin1String("denoise")) {
+                step.insert(QStringLiteral("humBase"),
+                            chkHum->isChecked()
+                                ? (cmbHumBase->currentIndex() == 1 ? QStringLiteral("60") : QStringLiteral("50"))
+                                : QStringLiteral("off"));
+                step.insert(QStringLiteral("wind"), chkWind->isChecked());
+            } else if (QLatin1String(verb) == QLatin1String("pitch")) {
+                step.insert(QStringLiteral("semi"), spinSemi->value());
+            } else if (QLatin1String(verb) == QLatin1String("separate")) {
+                step.insert(QStringLiteral("stem"), QStringLiteral("vocals"));// 预设链人声分离步主 stem 固定 vocals（kPipePresets 原语义）
+            }
+            steps.append(step);
+        }
+    }
+    QJsonArray inputs;
+    for (int i = 0; i < n; ++i) inputs.append(lstBatchFiles->item(i)->data(Qt::UserRole).toString());
+    set_busy(true);
+    lblStatus->setText(QStringLiteral("批处理中（共 %1 件）…").arg(n));
+    media->batch(QString::fromUtf8(QJsonDocument(inputs).toJson(QJsonDocument::Compact)),
+                 QString::fromUtf8(QJsonDocument(steps).toJson(QJsonDocument::Compact)));
+}
+
+// 批处理落地（FR-10 D8/附裁 5）：放锁；失败直通 error.message 弹警告——「已取消」静默特判
+// （onJobDone 同型逐字命中，整批取消 message 即「已取消」）；成功弹汇总 information
+// 「批处理完成：k/N 件成功」+ 清单逐件渲染（行文本 = 文件名 —— 成功（版本 N）/失败：CODE：message，
+// 按 items[].index 对位——index 1 基与清单行同序，GUI 只在批启动后整批落定才收到本回调，行序稳定）
+void MainWidget::onBatchDone(bool ok, const QString& jsonOrMessage) {
+    set_busy(false);
+    if (!ok) {
+        bar->setValue(0);
+        lblStatus->setText(jsonOrMessage);
+        if (jsonOrMessage != QStringLiteral("已取消")) QMessageBox::warning(this, QString::fromUtf8(kAppTitle), jsonOrMessage);
+        return;
+    }
+    bar->setValue(100);
+    const QJsonObject result = QJsonDocument::fromJson(jsonOrMessage.toUtf8()).object();
+    const int total = result.value(QStringLiteral("total")).toInt();
+    const int okCount = result.value(QStringLiteral("okCount")).toInt();
+    const QJsonArray items = result.value(QStringLiteral("items")).toArray();
+    for (const QJsonValue& v : items) {
+        const QJsonObject item = v.toObject();
+        const int row = item.value(QStringLiteral("index")).toInt() - 1;
+        if (row < 0 || row >= lstBatchFiles->count()) continue;
+        QListWidgetItem* it = lstBatchFiles->item(row);
+        const QString name = QFileInfo(it->data(Qt::UserRole).toString()).fileName();// 行文本可能已是上一轮结果，基名恒从 UserRole 取
+        if (item.value(QStringLiteral("ok")).toBool()) {
+            const int version = item.value(QStringLiteral("workspace")).toObject()
+                                     .value(QStringLiteral("version")).toInt();
+            it->setText(QStringLiteral("%1 —— 成功（版本 %2）").arg(name, QString::number(version)));
+        } else {
+            const QJsonObject err = item.value(QStringLiteral("error")).toObject();
+            it->setText(QStringLiteral("%1 —— 失败：%2：%3")
+                            .arg(name, err.value(QStringLiteral("code")).toString(),
+                                 err.value(QStringLiteral("message")).toString()));
+        }
+    }
+    lblStatus->setText(QStringLiteral("批处理完成：%1/%2 件成功").arg(okCount).arg(total));
+    QMessageBox::information(this, QString::fromUtf8(kAppTitle),
+                             QStringLiteral("批处理完成：%1/%2 件成功").arg(okCount).arg(total));
+}
+
 void MainWidget::doExtractAudio() {
     if (!media || curFile.isEmpty()) return;
     set_busy(true);
@@ -701,6 +904,7 @@ void MainWidget::set_busy(bool on) {
     btnInstrumental->setEnabled(!on);
     btnPipeline->setEnabled(!on);
     cmbPipeline->setEnabled(!on);// 预设切换只在空闲态（运行中换预设无意义且易误读状态行）
+    btnBatch->setEnabled(!on);// 批处理入口（FR-10）：对话框内启动键已随下行同锁，入口一并锁
     btnCancel->setEnabled(on);
     btnWsChange->setEnabled(!on);// 换根只对后续任务生效，任务期间不换（worker 单线程排队会延迟生效）
     btnHistory->setEnabled(!on && !curFile.isEmpty());// 查询排 worker 队，任务期间点了也要等任务跑完，干脆锁住
@@ -714,6 +918,13 @@ void MainWidget::set_busy(bool on) {
         btnModelCancel->setEnabled(on);
         modelBar->setVisible(on);
         modelBar->setValue(0);
+    }
+    if (batchDlg) {// 批处理对话框同锁（FR-10 D5：busy 整批一锁 = 七槽/管线/模型操作同一把锁）
+        cmbBatchAction->setEnabled(!on);
+        btnBatchAdd->setEnabled(!on);
+        btnBatchRemove->setEnabled(!on);
+        btnBatchClear->setEnabled(!on);
+        btnBatchStart->setEnabled(!on);
     }
     bar->setVisible(on);
     bar->setValue(0);

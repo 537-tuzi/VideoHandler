@@ -1,0 +1,131 @@
+用例,round-1,round-2,说明
+BATCH-OK-001,PASS,PASS,3 件两步批正例：result 结构 total/okCount/truncated/items[] 逐项 index/input/output/workspace/steps
+BATCH-OK-002,PASS,PASS,三件三个工作区（内容哈希身份天然隔离）
+BATCH-OK-003,PASS,PASS,各工作区 v001_denoise/ + v002_pitch/ 版本目录落位
+BATCH-OK-004,PASS,PASS,件 1 产物 ffprobe 体检 44.1k/2ch f32
+BATCH-OK-005,PASS,PASS,件 2（48k 源）产物 ffprobe 48000/2（跟随源免重采样）
+BATCH-OK-006,PASS,PASS,件 3（单声道源）产物 ffprobe 44100/1
+BATCH-OK-007,PASS,PASS,单步模板批：件响应 result 原样并入且无 steps 键
+BATCH-OK-008,PASS,PASS,带模型单步批（aiDenoise）：模型工作点锁 44.1k/2ch + 48k 源 resampled
+BATCH-OK-009,PASS,PASS,带模型批件产物 ffprobe 44100/2
+BATCH-OK-010,PASS,PASS,带模型两步批（aiDenoise→separate）：件内 steps 摘要完整
+BATCH-EQV-001,PASS,PASS,批跑编排成功（等价实验批侧）
+BATCH-EQV-m0,PASS,PASS,件 1 手动 pipeline 对照跑
+BATCH-EQV-m1,PASS,PASS,件 2 手动 pipeline 对照跑
+BATCH-EQV-m2,PASS,PASS,件 3 手动 pipeline 对照跑
+BATCH-EQV-2a,PASS,PASS,件 1 终产物批 vs 手动逐字节一致
+BATCH-EQV-2b,PASS,PASS,件 1 中间产物批 vs 手动逐字节一致
+BATCH-EQV-3a,PASS,PASS,件 2 终产物批 vs 手动逐字节一致
+BATCH-EQV-3b,PASS,PASS,件 2 中间产物批 vs 手动逐字节一致
+BATCH-EQV-4a,PASS,PASS,件 3 终产物批 vs 手动逐字节一致
+BATCH-EQV-4b,PASS,PASS,件 3 中间产物批 vs 手动逐字节一致
+BATCH-EQV-008,PASS,PASS,带模型批跑（等价实验批侧）
+BATCH-EQV-n0,PASS,PASS,带模型件 1 手动 pipeline 对照跑
+BATCH-EQV-n1,PASS,PASS,带模型件 2 手动 pipeline 对照跑
+BATCH-EQV-9,PASS,PASS,带模型件 1 终产物逐字节一致
+BATCH-EQV-10,PASS,PASS,带模型件 2 终产物逐字节一致
+BATCH-EQV-SR1,,PASS,同根等价批侧：批跑 eqvS 根 3 件 okCount=3（round-2 补测：批 vs 手动同 workspace 根）
+BATCH-EQV-SRs0,,PASS,同根件 1 手动 pipeline：定位批已建工作区续号 v003+
+BATCH-EQV-SRs1,,PASS,同根件 2 手动 pipeline（同上）
+BATCH-EQV-SRs2,,PASS,同根件 3 手动 pipeline（同上）
+BATCH-EQV-SRc0,,PASS,同根件 1 终产物批 vs 手动逐字节一致
+BATCH-EQV-SRc1,,PASS,同根件 2 终产物逐字节一致
+BATCH-EQV-SRc2,,PASS,同根件 3 终产物逐字节一致
+BATCH-FAIL-001,PASS,PASS,件 2 不存在：ok=true（编排层成功）+ okCount=2 + 件错误原文 + 幸存件产物在盘
+BATCH-FAIL-002,PASS,PASS,件错误无「第 N 件」前缀（附裁 3：归属在 index/input 结构键）
+BATCH-FAIL-003,PASS,PASS,件 2 无音频流（video-only mp4）：E_FILE 归件 + 续跑 + 件 3 产物在盘
+BATCH-FAIL-004,PASS,PASS,坏模型全败批：ok=true okCount=0 退出码 0（ok=编排层成功口径 OQ-1(a)）
+BATCH-FAIL-005,PASS,PASS,多步件内步失败（维度错位模型）：items[].error 带步骤前缀与 step/stepCmd（pipeline 归属透传）
+BATCH-FAIL-006,PASS,PASS,件 1 步 1 已提交保留（head=1 transcode，失败步 discard）
+BATCH-NEG-001,PASS,PASS,inputs 缺失
+BATCH-NEG-002,PASS,PASS,inputs 非数组
+BATCH-NEG-003,PASS,PASS,inputs 1 件（OQ-5(a) 下限 ≥2）
+BATCH-NEG-004,PASS,PASS,inputs 元素非字符串
+BATCH-NEG-005,PASS,PASS,inputs 元素空串
+BATCH-NEG-006,PASS,PASS,inputs 重复绝对路径（./ 归一后同文件，D2 字符串级查重）
+BATCH-NEG-007,PASS,PASS,steps 缺失
+BATCH-NEG-008,PASS,PASS,steps 非数组
+BATCH-NEG-009,PASS,PASS,steps 空（0 步 < minSteps=1）
+BATCH-NEG-010,PASS,PASS,steps 元素非对象
+BATCH-NEG-011,PASS,PASS,steps 元素缺 cmd
+BATCH-NEG-012,PASS,PASS,steps cmd 非字符串
+BATCH-NEG-013,PASS,PASS,内置动词 probe 入模板拒收
+BATCH-NEG-014,PASS,PASS,内置动词 extractAudio 入模板拒收
+BATCH-NEG-015,PASS,PASS,内置动词 modelList 入模板拒收
+BATCH-NEG-016,PASS,PASS,pipeline 嵌套入模板拒收（递归深度有界）
+BATCH-NEG-017,PASS,PASS,batch 嵌套入模板拒收
+BATCH-NEG-018,PASS,PASS,模板步含 input 拒收（链级键，风险 2）
+BATCH-NEG-019,PASS,PASS,模板步含 output 拒收
+BATCH-NEG-020,PASS,PASS,模板步含 workspace 拒收
+BATCH-NEG-021,PASS,PASS,模板步含 v 拒收
+BATCH-NEG-022,PASS,PASS,模板步未知参数字段 bogus
+BATCH-NEG-023,PASS,PASS,参数越界 semi=15：步骤级归属前缀 + step/stepCmd（预校验）
+BATCH-NEG-024,PASS,PASS,模板模型路径不存在：E_MODEL 步骤级拦截（开工前）
+BATCH-NEG-025,PASS,PASS,缺 workspace 拒收（D5 强制）
+BATCH-NEG-026,PASS,PASS,信封 output 拒收（allowsOutput=false）
+BATCH-NEG-027,PASS,PASS,顶层 input 未知字段（requiresInput=false 口径）
+BATCH-NEG-028,PASS,PASS,schema 错误不带 step/stepCmd
+BATCH-NEG-029,PASS,PASS,开工前拦截：工作区根零目录零产物（round-2 红绿论证：断言翻转转红）
+BATCH-NEG-030,PASS,PASS,全部源 sha256 前后不变（round-2 修正恒真断言：基线上移到全部请求前 + 翻转转红证非空）
+BATCH-WS-001,PASS,PASS,多步件版本记录 pipeline+batch 双键逐版本断言（风险 4 拦截面）
+BATCH-WS-002,PASS,PASS,件 3 批标记 {index:3,total:3}（件序贯通）
+BATCH-WS-003,PASS,PASS,单步件记录带 batch 键而无 pipeline 键（两标记通路独立）
+BATCH-WS-004,PASS,PASS,版本记录 params 纯度：链级键不泄入件步参数（风险 2）
+BATCH-WS-005,PASS,PASS,同内容不同路径两件同工作区顺次 v001/v002
+BATCH-WS-006,PASS,PASS,两件 workspace.dir 相同（内容哈希身份）
+BATCH-WS-007,PASS,PASS,续号记录批标记 index=1/2（append-only 语义）
+BATCH-WS-008,PASS,PASS,缓存删除（rm index.json）后批继续定位同工作区续号 v003/v004
+BATCH-WS-009,PASS,PASS,非批任务（单动词）正常执行
+BATCH-WS-010,PASS,PASS,非批任务版本记录无 batch/pipeline 键（键面零漂移）
+BATCH-WS-011,,PASS,非批任务单动词落 zws 根（字节不变实验前置；round-2 补测）
+BATCH-WS-012,,PASS,同根批 2 件（不同源 → 别的工作区）跑通 okCount=2
+BATCH-WS-013,,PASS,批后单动词 workspace.json sha256 逐字节不变（批不触碰他人工作区索引）
+BATCH-CAN-001,PASS,PASS,cancel-pre：E_CANCELLED + 「已取消」逐字 + completed=0/total=2 + 无 items/result + 零进度
+BATCH-CAN-002,PASS,PASS,cancel-pre 连工作区根目录都不建
+BATCH-CAN-003,PASS,PASS,cancel-mid：件 1 在途取消 completed=0（被取消件不计，OQ-2(b)）
+BATCH-CAN-004,PASS,PASS,cancel-mid 版本目录 discard 无残迹
+BATCH-CAN-005,PASS,PASS,cancel-between：completed=1 + 「已取消」逐字 + 进度止于映射 50
+BATCH-CAN-006,PASS,PASS,cancel-between 件 1 版本已提交保留（batch 标记 index=1）
+BATCH-PROG-001,PASS,PASS,3 件单步件层等分映射：终值 100/单调/件界 33·66（D6(a)）
+BATCH-PROG-002,PASS,PASS,2 件两步两层等分复合映射：边界 25·50·75·100
+BATCH-GUIE-001,PASS,PASS,ok-batch：batchFinished 载荷批 result JSON + 恰一次 + 进度 100 + 无 modelMissing
+BATCH-GUIE-002,PASS,PASS,missing-pre：找不到模型文案 + modelMissing(aiDenoise) + B→M 顺序（附裁 1）
+BATCH-GUIE-003,PASS,PASS,missing-pre 整批速断零件启动：零工作区目录
+BATCH-GUIE-004,PASS,PASS,emid-item：okCount=0 且 ok=1 + 零 modelMissing（件循环内禁发，Y5 封堵）
+BATCH-GUIE-005,PASS,PASS,cancel：「已取消」逐字（GUI 静默特判契约，附裁 5）
+BATCH-GUIE-006,PASS,PASS,cancel 件 1 版本已提交保留
+BATCH-MEM-001,PASS,PASS,2 件 30min 批实跑成功（峰值断言前置防空转）
+BATCH-MEM-002,PASS,PASS,批峰值与最重单动词同量级且 < 256MB（件·步串行零叠加，NFR-P4）
+BATCH-MEM-003,PASS,PASS,带模型批实跑成功（防空转前置）
+BATCH-MEM-004,PASS,PASS,模型批峰值 ≤ separate 单跑 + 32MB 且 < 2GiB（模型会话跨件零叠加）
+BATCH-ZERO-json,PASS,PASS,run-json 全量复跑全绿（CMD 族信封零漂移；round-2 首跑 1 败系与红绿驱动并发所致，串行复跑×2 全绿）
+BATCH-ZERO-ws,PASS,PASS,run-ws 全量复跑全绿 58 PASS（workspace 键面零漂移）
+BATCH-ZERO-models,PASS,,run-models 未随 round-2 复跑（round-1 全绿 142；模型族零触碰面未变，挂账见 round-2.md）
+BATCH-ZERO-pipe,PASS,PASS,run-pipe 全量复跑全绿 77 PASS（PIPE-NEG 19 条逐字零漂移 = validateSteps 抽取护栏）
+BATCH-ZERO-guislot,PASS,,gui-slot-eqv 未随 round-2 复跑（round-1 全绿 18；挂账见 round-2.md）
+BATCH-ZERO-thinshell,PASS,,thinshell-eqv 未随 round-2 复跑（round-1 全绿；挂账见 round-2.md）
+BATCH-ZERO-build,PASS,PASS,--clean-first 全量重编 27/27 零警告（round-2 独立复跑）
+BATCH-GUI-001,,PASS,控件面就绪（lstBatchFiles/cmbBatchAction 8 条=5 单步+3 预设，OQ-6(a)）
+BATCH-GUI-002,,PASS,组包 den60：[{denoise,humBase:60,wind:true}]（动态参数注入）
+BATCH-GUI-003,,PASS,组包 denoff：humBase=off + wind=false 独立注入
+BATCH-GUI-003b,,PASS,denoff 失败面：预校验「没有可执行的降噪项」原文透传警告框（消息名点双标志=注入面到达引擎）+ 行不渲染
+BATCH-GUI-004,,PASS,组包 ai：[{aiDenoise}]（模型步无参数，两级解析在 worker）
+BATCH-GUI-005,,PASS,组包 pit：semi 取当前面板（2.5）
+BATCH-GUI-006,,PASS,组包 sepv：stem=vocals
+BATCH-GUI-007,,PASS,组包 sepi：stem=instrumental
+BATCH-GUI-008,,PASS,组包 pre0：aiDenoise→separate（stem=vocals 显式）
+BATCH-GUI-009,,PASS,组包 pre1：denoise(60,wind)→separate
+BATCH-GUI-010,,PASS,组包 pre2：separate→pitch(-3.5)
+BATCH-GUI-011,,PASS,mixed 清单含不存在件原样透传（失败归件不归壳）
+BATCH-GUI-012,,PASS,组包 cancel：[{pitch,semi:1.0}] + inputs 两件透传
+BATCH-GUI-013,,PASS,busy 锁全批覆盖：11 case 提交即锁/完成即解（七槽+管线+批入口+对话框键）
+BATCH-GUI-014,,PASS,批运行中锁持续（首个进度回调采样全锁；denoff 预校验失败零进度 mid=-1）
+BATCH-GUI-015,,PASS,完成文案「批处理完成：2/2 件成功」（8 成功 case 信息弹窗逐字，附裁 5）
+BATCH-GUI-016,,PASS,混合败件完成文案「批处理完成：1/2 件成功」+ 状态行同步
+BATCH-GUI-017,,PASS,清单逐件渲染：成功（版本 N）/失败：E_FILE：原文（index 对位）
+BATCH-GUI-018,,PASS,「已取消」静默：零弹窗 + 状态行逐字 + 行不渲染（附裁 5）
+BATCH-GUI-019,,PASS,批进度终值 100（主进度条满格代理；denoff 零进度）
+BATCH-GUI-020,,PASS,缺模型开工前速断：警告+问询双弹窗齐 + 模型管理打开 + busy 已释放（B→M 序以 GUIE-002 order=BM + 本面 unlocked=1 为证；问询框嵌套于警告框 exec 内，探针栈顶采样不锁 record 序）
+BATCH-GUI-021,,PASS,缺模型整批速断零件启动（零工作区目录）
+BATCH-GUI-022,,PASS,多选对话框应答（行编辑引号多填 + AcceptRole，清单 2 件序正确）
+BATCH-REG-*,未跑,未跑,注册表零改前瞻（M3 假想验证）分支证据制不进 ci-smoke（spec §6.10）

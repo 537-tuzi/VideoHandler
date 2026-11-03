@@ -525,21 +525,14 @@ void FFExtractor::doExtractVideo(const QString& inPath) {
     runRequest(req, QStringLiteral("无声视频提取完成"));
 }
 
-// 管线一键（FR-9 D8）：stepsJson 为步骤数组 Compact JSON（QString 传 JSON，wsInfo 同型）。
-// 壳只做两件事——解析数组、给无显式 model 的模型步逐个补两级缺省解析（与七槽同一
-// resolveDefaultModel；verb→bundled 相对路径映射同 doDenoiseAiWav/doSepVocals 写法）；此后组
-// pipeline 请求走统一 runRequest，schema/静态预校验/链式执行全部由命令层承担。两级皆缺时
-// 文案/信号同单槽形态（jobDone 文案 + modelMissing(动词) 引导，附裁 1 用途不漂）
-void FFExtractor::doPipeline(const QString& inPath, const QString& stepsJson) {
-    QJsonParseError pe{};
-    const QJsonDocument doc = QJsonDocument::fromJson(stepsJson.toUtf8(), &pe);
-    if (pe.error != QJsonParseError::NoError || !doc.isArray()) {
-        emit jobDone(false, QStringLiteral("管线步骤解析失败"));
-        return;
-    }
-    QJsonArray steps = doc.array();
-    for (int i = 0; i < steps.size(); ++i) {
-        QJsonObject step = steps.at(i).toObject();
+// 步骤模板模型步两级缺省解析（FR-9 自 doPipeline 原样抽取——循环体/文案/信号判定逐字平移，
+// doPipeline 行为零漂移；FR-10 D3 doBatch 复用同一实现）：跳过非模型步与显式 model 步，
+// 模型步逐个 resolveDefaultModel（与七槽同源；verb→bundled 相对路径映射同单槽写法）。
+// 返回 false 时 *missingVerb/*missingMsg 已置（调用方据此发引导信号——管线 jobDone 文案 +
+// modelMissing(verb)，批 batchFinished + modelMissing(verb)，各自完成信号形态不同）
+bool FFExtractor::resolveStepModels(QJsonArray* steps, QString* missingVerb, QString* missingMsg) const {
+    for (int i = 0; i < steps->size(); ++i) {
+        QJsonObject step = steps->at(i).toObject();
         const QString verb = step.value(QStringLiteral("cmd")).toString();
         QString rel, disp;
         if (verb == QLatin1String("aiDenoise")) {
@@ -555,16 +548,91 @@ void FFExtractor::doPipeline(const QString& inPath, const QString& stepsJson) {
         const QString bundled = QCoreApplication::applicationDirPath() + "/" + rel;
         const QString model = resolveDefaultModel(verb, bundled);
         if (!QFileInfo::exists(model)) {
-            emit jobDone(false, QStringLiteral("找不到%1模型：%2").arg(disp, bundled));
-            emit modelMissing(verb);
-            return;
+            *missingVerb = verb;
+            *missingMsg = QStringLiteral("找不到%1模型：%2").arg(disp, bundled);
+            return false;
         }
         step.insert(QStringLiteral("model"), model);
-        steps.replace(i, step);
+        steps->replace(i, step);
+    }
+    return true;
+}
+
+// 管线一键（FR-9 D8）：stepsJson 为步骤数组 Compact JSON（QString 传 JSON，wsInfo 同型）。
+// 壳只做两件事——解析数组、模板模型步两级缺省解析（resolveStepModels 共享段）；此后组
+// pipeline 请求走统一 runRequest，schema/静态预校验/链式执行全部由命令层承担。两级皆缺时
+// 文案/信号同单槽形态（jobDone 文案 + modelMissing(动词) 引导，附裁 1 用途不漂）
+void FFExtractor::doPipeline(const QString& inPath, const QString& stepsJson) {
+    QJsonParseError pe{};
+    const QJsonDocument doc = QJsonDocument::fromJson(stepsJson.toUtf8(), &pe);
+    if (pe.error != QJsonParseError::NoError || !doc.isArray()) {
+        emit jobDone(false, QStringLiteral("管线步骤解析失败"));
+        return;
+    }
+    QJsonArray steps = doc.array();
+    QString missingVerb, missingMsg;
+    if (!resolveStepModels(&steps, &missingVerb, &missingMsg)) {
+        emit jobDone(false, missingMsg);
+        emit modelMissing(missingVerb);
+        return;
     }
     QJsonObject req;
     req.insert(QStringLiteral("cmd"), QStringLiteral("pipeline"));
     req.insert(QStringLiteral("input"), inPath);
     req.insert(QStringLiteral("steps"), steps);
     runRequest(req, QStringLiteral("管线完成"));// 成功文案「管线完成：<终产物路径>」（附裁 5，runRequest 拼 output）
+}
+
+// 批处理（FR-10 D3/D8）：inputsJson 为件路径数组 Compact JSON、stepsJson 为共享模板（同型）。
+// 壳只做三件事——解析两 JSON、开工前模板模型步两级缺省解析（模板全批共享故一次解析覆盖全部件；
+// 附裁 1：解析失败 → batchFinished(错误文案) 先放 busy + modelMissing(动词) 引导，整批速断零件
+// 启动——件循环内禁发 modelMissing（busy 长持下引导下载被 if(busy) return 静默吞 = Y5 毒缝））、
+// 组 batch 请求走命令层 execute（schema/模板预校验/件循环/失败续跑全部由命令层承担）。
+// 收尾独立于 runRequest：批成功不是单产物文案而是批 result JSON（GUI 逐件渲染），失败直通
+// error.message（含整批取消「已取消」，GUI 静默特判逐字命中）；批内 E_MODEL 不发 modelMissing
+//（模型已在开工前解析过，批内缺模型属文件级损坏由 items[].error 自述）
+void FFExtractor::doBatch(const QString& inputsJson, const QString& stepsJson) {
+    QJsonParseError pe{};
+    const QJsonDocument inputsDoc = QJsonDocument::fromJson(inputsJson.toUtf8(), &pe);
+    if (pe.error != QJsonParseError::NoError || !inputsDoc.isArray()) {
+        emit batchFinished(false, QStringLiteral("批处理清单解析失败"));
+        return;
+    }
+    const QJsonDocument stepsDoc = QJsonDocument::fromJson(stepsJson.toUtf8(), &pe);
+    if (pe.error != QJsonParseError::NoError || !stepsDoc.isArray()) {
+        emit batchFinished(false, QStringLiteral("批处理模板解析失败"));
+        return;
+    }
+    QJsonArray steps = stepsDoc.array();
+    QString missingVerb, missingMsg;
+    if (!resolveStepModels(&steps, &missingVerb, &missingMsg)) {
+        emit batchFinished(false, missingMsg);// 先发完成信号释放 busy（附裁 1 顺序：引导对话框打开时任务锁已归还）
+        emit modelMissing(missingVerb);
+        return;
+    }
+    QJsonObject req;
+    req.insert(QStringLiteral("cmd"), QStringLiteral("batch"));
+    req.insert(QStringLiteral("inputs"), inputsDoc.array());
+    req.insert(QStringLiteral("steps"), steps);
+    if (!workspaceRoot.isEmpty()) req.insert(QStringLiteral("workspace"), workspaceRoot);// 批强制工作区，根未注入时命令层 E_PARAMS 自述
+    CommandLayer::Ctx ctx;
+    ctx.cancel = cancelFlag;
+    ctx.onProgress = [this](int pct) { emit progress(pct); };
+    QJsonObject resp;
+    try {
+        resp = CommandLayer::execute(req, ctx);// 兜底 catch 同 runRequest（execute 契约不抛出，防其违约穿透 worker 槽）
+    } catch (const std::exception& e) {
+        emit batchFinished(false, QStringLiteral("批处理异常终止：%1").arg(QString::fromUtf8(e.what())));
+        return;
+    } catch (...) {
+        emit batchFinished(false, QStringLiteral("批处理异常终止（未知异常）"));
+        return;
+    }
+    if (resp.value(QStringLiteral("ok")).toBool()) {
+        emit batchFinished(true, QString::fromUtf8(QJsonDocument(resp.value(QStringLiteral("result")).toObject())
+                                                      .toJson(QJsonDocument::Compact)));
+    } else {
+        emit batchFinished(false, resp.value(QStringLiteral("error")).toObject()
+                                 .value(QStringLiteral("message")).toString());
+    }
 }

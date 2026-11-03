@@ -120,7 +120,7 @@ QJsonObject recordParams(QJsonObject filled) {
 // 成功响应的 result 注入 workspace:{root,dir,version}（纯增量键，direct 模式不带）
 QJsonObject runInWorkspace(const QJsonObject& req, const QJsonObject& params, const QJsonValue& model,
                            const std::function<QJsonObject(const Workspace::VersionPlan&)>& runTask,
-                           const QJsonObject& pipelineMarker = {}) {
+                           const QJsonObject& pipelineMarker = {}, const QJsonObject& batchMarker = {}) {
     const QString cmd = reqCmd(req);
     Workspace::VersionPlan plan;
     ErrInfo werr;
@@ -128,6 +128,7 @@ QJsonObject runInWorkspace(const QJsonObject& req, const QJsonObject& params, co
                                 req.value(QStringLiteral("input")).toString(), cmd, &plan, &werr))
         return errorResponse(cmd, errCodeText(werr.code), werr.message);
     plan.pipeline = pipelineMarker;// 管线标记（FR-9 D5）：空对象 = 非管线任务，commit 不插键
+    plan.batch = batchMarker;// 批标记（FR-10 D5/OQ-3）：空对象 = 非批任务，commit 不插键
     const QJsonObject resp = runTask(plan);
     if (!resp.value(QStringLiteral("ok")).toBool()) {// 任务失败：底座已删产物半成品，补删版本目录
         Workspace::discardVersion(plan);
@@ -235,19 +236,26 @@ QJsonObject runEngine(const EngineEntry& entry, const QJsonObject& req, const Ct
         pipelineMarker.insert(QStringLiteral("index"), ctx.pipelineIndex);
         pipelineMarker.insert(QStringLiteral("total"), ctx.pipelineTotal);
     }
+    QJsonObject batchMarker;// 批件标记（FR-10 D5/OQ-3）：cmdBatch 逐件组合时经 Ctx 注入；多步件由
+    if (ctx.batchTotal > 0) {// cmdPipeline 拷贝批字段透传——版本记录可同时含 pipeline 与 batch 两键
+        batchMarker.insert(QStringLiteral("index"), ctx.batchIndex);
+        batchMarker.insert(QStringLiteral("total"), ctx.batchTotal);
+    }
     return runInWorkspace(req, recordParams(args), model, [&](const Workspace::VersionPlan& plan) {
         const QString outPath = plan.versionDir + QStringLiteral("/") + QFileInfo(input).completeBaseName()
                               + suffix + QStringLiteral(".wav");
         return runTranscode(req, ctx, *engine, outPath, entry.lockCanonicalOutput);
-    }, pipelineMarker);
+    }, pipelineMarker, batchMarker);
 }
 
 // ---- 管线动词（FR-9，spec D1–D6/D9）：多遍执行——每步一次完整单动词 execute（组合非复制）----
 
 // 失败步响应改造（D4）：E_* 与原 message 在产生点透传，缀「步骤 N（cmd）：」前缀并加 step/stepCmd
 // 归属键（既有消费者只读 code/message 不受影响）；E_CANCELLED 例外——message 逐字不缀前缀
-// （GUI onJobDone 对「已取消」全文特判，mainwidget.cpp，缀前缀即行为回归）
-QJsonObject stepError(const QString& code, const QString& message, int stepNo, const QString& stepCmd) {
+// （GUI onJobDone 对「已取消」全文特判，mainwidget.cpp，缀前缀即行为回归）。
+// FR-10 D3：cmd 参数化（pipeline/batch 共用——回显各自请求动词，消息模板不变零漂移）
+QJsonObject stepError(const QString& cmd, const QString& code, const QString& message, int stepNo,
+                      const QString& stepCmd) {
     const QString msg = code == QLatin1String(errCodeText(ErrCode::Cancelled))
                             ? message
                             : QStringLiteral("步骤 %1（%2）：").arg(stepNo).arg(stepCmd) + message;
@@ -259,23 +267,28 @@ QJsonObject stepError(const QString& code, const QString& message, int stepNo, c
     QJsonObject resp;
     resp.insert(QStringLiteral("v"), 1);
     resp.insert(QStringLiteral("ok"), false);
-    resp.insert(QStringLiteral("cmd"), QStringLiteral("pipeline"));
+    resp.insert(QStringLiteral("cmd"), cmd);
     resp.insert(QStringLiteral("error"), error);
     return resp;
 }
 
-QJsonObject cmdPipeline(const QJsonObject& req, const Ctx& ctx) {
-    const QString cmd = QStringLiteral("pipeline");
-    // —— ① steps schema：必填/数组/≥2（链式动词语义下限，附裁 2）/元素对象/cmd 命中引擎表/未知字段 ——
+// ---- steps 模板校验共享段（FR-10 D3 从 cmdPipeline 原样抽取：schema 消息模板与校验序逐字不变，
+// 仅两处参数化——cmd（错误响应回显动词）与 minSteps（下限，pipeline 2 / batch 1，下限消息随值生成，
+// 传 2 时与原内联逐字节一致）。两段：① schema（必填/数组/下限/元素对象/cmd 命中引擎表/步骤未知字段
+// ——内置动词与 pipeline/batch 自身都不在引擎表 → 天然拒收，递归深度有界）；② 逐步静态预校验
+// （staticCheck 不调 create 零副作用；失败经 stepError 缀「步骤 N（cmd）：」前缀 + step/stepCmd
+// 归属键）。返回空对象 = 通过（stepEntries 回填每步命中的条目表）；非空 = 完整错误响应 ----
+QJsonObject validateSteps(const QString& cmd, const QJsonObject& req, int minSteps,
+                          QList<const EngineEntry*>* stepEntries) {
     const QJsonValue stepsV = req.value(QStringLiteral("steps"));
     if (stepsV.isUndefined())
         return errorResponse(cmd, errCodeText(ErrCode::Params), QStringLiteral("steps 缺失"));
     if (!stepsV.isArray())
         return errorResponse(cmd, errCodeText(ErrCode::Params), QStringLiteral("steps 必须是数组"));
     const QJsonArray steps = stepsV.toArray();
-    if (steps.size() < 2)
-        return errorResponse(cmd, errCodeText(ErrCode::Params), QStringLiteral("steps 至少需要 2 步"));
-    QList<const EngineEntry*> stepEntries;// 每步命中的引擎条目（schema 段定序，预校验/执行段复用）
+    if (steps.size() < minSteps)
+        return errorResponse(cmd, errCodeText(ErrCode::Params),
+                             QStringLiteral("steps 至少需要 %1 步").arg(minSteps));
     for (int i = 0; i < steps.size(); ++i) {
         const QString where = QStringLiteral("steps[%1]").arg(i);
         const QJsonValue stepV = steps.at(i);
@@ -291,7 +304,7 @@ QJsonObject cmdPipeline(const QJsonObject& req, const Ctx& ctx) {
         const EngineEntry* entry = nullptr;
         for (const EngineEntry& e : EngineRegistry::engineTable())
             if (e.id == stepCmdV.toString()) { entry = &e; break; }
-        if (!entry)// 内置动词与 pipeline 自身都不在引擎表 → 天然拒收（递归深度有界为 1，D2/D9）
+        if (!entry)
             return errorResponse(cmd, errCodeText(ErrCode::Params),
                                  QStringLiteral("%1 的 cmd 不可链式：%2（仅引擎动词可入链）")
                                      .arg(where, stepCmdV.toString()));
@@ -303,19 +316,30 @@ QJsonObject cmdPipeline(const QJsonObject& req, const Ctx& ctx) {
             return errorResponse(cmd, errCodeText(ErrCode::Params),
                                  QStringLiteral("%1 未知字段：%2").arg(where, key));
         }
-        stepEntries.append(entry);
+        stepEntries->append(entry);
     }
-    // —— ② 整链静态预校验（D3：全部步骤开工前过一遍——静态校验零副作用、毫秒级，「跑完两步才发现
-    //    第 3 步 semi:15 越界」不可接受；失败缀步骤前缀同 D4（E_PARAMS/E_MODEL 透传）——
+    // 整链静态预校验（pipeline D3：全部步骤开工前过一遍——静态校验零副作用、毫秒级，「跑完两步才
+    // 发现第 3 步 semi:15 越界」不可接受；批同款且模板全批共享，一次预校验覆盖全部件（FR-10 D3）
     for (int i = 0; i < steps.size(); ++i) {
         QJsonObject args;
-        const QJsonObject chk = staticCheck(*stepEntries.at(i), steps.at(i).toObject(), &args);
+        const QJsonObject chk = staticCheck(*stepEntries->at(i), steps.at(i).toObject(), &args);
         if (!chk.isEmpty()) {
             const QJsonObject err = chk.value(QStringLiteral("error")).toObject();
-            return stepError(err.value(QStringLiteral("code")).toString(),
-                             err.value(QStringLiteral("message")).toString(), i + 1, stepEntries.at(i)->id);
+            return stepError(cmd, err.value(QStringLiteral("code")).toString(),
+                             err.value(QStringLiteral("message")).toString(), i + 1, stepEntries->at(i)->id);
         }
     }
+    return {};
+}
+
+QJsonObject cmdPipeline(const QJsonObject& req, const Ctx& ctx) {
+    const QString cmd = QStringLiteral("pipeline");
+    // —— ①② steps schema 与整链静态预校验（validateSteps 共享段，minSteps=2——链式动词语义下限，
+    //    附裁 2；抽取自本函数，消息模板与校验序零漂移——PIPE-NEG 19 条为回归网）——
+    QList<const EngineEntry*> stepEntries;
+    const QJsonObject verr = validateSteps(cmd, req, 2, &stepEntries);
+    if (!verr.isEmpty()) return verr;
+    const QJsonArray steps = req.value(QStringLiteral("steps")).toArray();
     // —— ③ workspace 必填（D6/OQ-1(a)：管线只提供工作区模式——direct 中间产物不可追溯不可续跑）——
     const QString wsRoot = req.value(QStringLiteral("workspace")).toString();
     if (wsRoot.isEmpty())
@@ -330,7 +354,7 @@ QJsonObject cmdPipeline(const QJsonObject& req, const Ctx& ctx) {
     for (int i = 0; i < total; ++i) {
         const QString stepCmd = stepEntries.at(i)->id;
         if (ctx.cancel && ctx.cancel->load())// 每步开工前加查（步间空隙不漏检，NFR-R1 ≤1s 语义）
-            return stepError(errCodeText(ErrCode::Cancelled), QStringLiteral("已取消"), i + 1, stepCmd);
+            return stepError(cmd, errCodeText(ErrCode::Cancelled), QStringLiteral("已取消"), i + 1, stepCmd);
         QJsonObject sub = steps.at(i).toObject();// 子请求单点组装（风险 2：链级键只在此并入）
         sub.insert(QStringLiteral("v"), 1);
         sub.insert(QStringLiteral("input"), input);
@@ -339,6 +363,8 @@ QJsonObject cmdPipeline(const QJsonObject& req, const Ctx& ctx) {
         subCtx.cancel = ctx.cancel;// [i*100/total,(i+1)*100/total]，末步 100 即整链 100；cancel 原样传递
         subCtx.pipelineIndex = i + 1;
         subCtx.pipelineTotal = total;
+        subCtx.batchIndex = ctx.batchIndex;// 批字段显式拷贝（FR-10 风险 4：fresh Ctx 不拷贝则多步件的
+        subCtx.batchTotal = ctx.batchTotal;// 引擎子调用静默丢 batch 标记——BATCH-WS 双键断言拦截）
         const int base = i * 100;
         if (ctx.onProgress)
             subCtx.onProgress = [ctx, base, total](int pct) { ctx.onProgress((base + pct) / total); };
@@ -346,7 +372,7 @@ QJsonObject cmdPipeline(const QJsonObject& req, const Ctx& ctx) {
         if (!subResp.value(QStringLiteral("ok")).toBool()) {
             // 失败/取消：该步版本目录已在其内部 runInWorkspace discard，前序已提交步保留（D5）
             const QJsonObject err = subResp.value(QStringLiteral("error")).toObject();
-            return stepError(err.value(QStringLiteral("code")).toString(),
+            return stepError(cmd, err.value(QStringLiteral("code")).toString(),
                              err.value(QStringLiteral("message")).toString(), i + 1, stepCmd);
         }
         const QJsonObject subResult = subResp.value(QStringLiteral("result")).toObject();
@@ -364,6 +390,129 @@ QJsonObject cmdPipeline(const QJsonObject& req, const Ctx& ctx) {
     result.insert(QStringLiteral("workspace"), lastWs);
     result.insert(QStringLiteral("steps"), summaries);
     result.insert(QStringLiteral("truncated"), truncatedAny);// 各步真值在 steps[] 内逐项可查（D5）
+    return okResponse(cmd, result);
+}
+
+// ---- 批处理动词（FR-10，spec D1–D7/D9）：同模板多文件——模板静态预校验一次全批共享，件循环逐件
+// 组合既有 execute（1 步 → 单动词子请求、≥2 步 → pipeline 子请求，组合非复制），失败不中断在编排层
+// 机制化（REQUIREMENTS FR-10），整批取消（message 逐字「已取消」，D7）——fr24 §5.4 旧缝的演进归宿 ----
+
+// 件子请求组装单点（FR-9 风险 2 同型防护）：链级键（v/input/workspace/steps）只在此并入——模板步
+// 对象经 validateSteps 已证不含链级键，单动词件以步骤对象为底原样注入不被污染
+QJsonObject itemRequest(const QJsonArray& steps, const QString& input, const QString& wsRoot) {
+    QJsonObject sub;
+    if (steps.size() == 1)
+        sub = steps.at(0).toObject();// 单动词件：步骤对象（cmd+参数）即请求底（最常见批形态，D3）
+    else {
+        sub.insert(QStringLiteral("cmd"), QStringLiteral("pipeline"));// 多步件：pipeline 子请求整链复用
+        sub.insert(QStringLiteral("steps"), steps);
+    }
+    sub.insert(QStringLiteral("v"), 1);
+    sub.insert(QStringLiteral("input"), input);
+    sub.insert(QStringLiteral("workspace"), wsRoot);
+    return sub;
+}
+
+// 批取消响应（D7/OQ-2(b)）：message 逐字「已取消」（GUI 静默特判零漂移，任何后缀都是行为回归）+
+// completed/total 结构化增量键——completed = 已完整落定件数（成功或已记 error），被取消的当前件
+// 不计（在途半成品已删+版本目录 discard）；不带 items[]（error 信封无 result，pipeline 取消同形）
+QJsonObject batchCancelled(int completed, int total) {
+    QJsonObject resp = errorResponse(QStringLiteral("batch"), errCodeText(ErrCode::Cancelled),
+                                     QStringLiteral("已取消"));
+    QJsonObject error = resp.value(QStringLiteral("error")).toObject();
+    error.insert(QStringLiteral("completed"), completed);
+    error.insert(QStringLiteral("total"), total);
+    resp.insert(QStringLiteral("error"), error);
+    return resp;
+}
+
+QJsonObject cmdBatch(const QJsonObject& req, const Ctx& ctx) {
+    const QString cmd = QStringLiteral("batch");
+    // —— ① inputs schema：必填/数组/≥2（队列语义下限，OQ-5(a)：单件 = 直接调单动词/pipeline）/
+    //    元素字符串非空/绝对路径重复拒收（GUI 多选天然无重复，CLI 手写清单的重复是失误不是意图）。
+    //    附裁 2：无件数上限（件串行执行，峰值 RSS 与件数正交；items[] 线性累积 KB 级摘要）——
+    const QJsonValue inputsV = req.value(QStringLiteral("inputs"));
+    if (inputsV.isUndefined())
+        return errorResponse(cmd, errCodeText(ErrCode::Params), QStringLiteral("inputs 缺失"));
+    if (!inputsV.isArray())
+        return errorResponse(cmd, errCodeText(ErrCode::Params), QStringLiteral("inputs 必须是数组"));
+    const QJsonArray inputs = inputsV.toArray();
+    if (inputs.size() < 2)
+        return errorResponse(cmd, errCodeText(ErrCode::Params), QStringLiteral("inputs 至少需要 2 件"));
+    QStringList inputsAbs;// 重复检查集：QFileInfo::absoluteFilePath 字符串级两两比对（D2 口径，
+    for (int i = 0; i < inputs.size(); ++i) {// 不做 symlink 解析归一）
+        const QJsonValue v = inputs.at(i);
+        if (!v.isString())
+            return errorResponse(cmd, errCodeText(ErrCode::Params),
+                                 QStringLiteral("inputs[%1] 必须是字符串").arg(i));
+        if (v.toString().isEmpty())
+            return errorResponse(cmd, errCodeText(ErrCode::Params),
+                                 QStringLiteral("inputs[%1] 不能为空").arg(i));
+        const QString abs = QFileInfo(v.toString()).absoluteFilePath();
+        if (inputsAbs.contains(abs))
+            return errorResponse(cmd, errCodeText(ErrCode::Params),
+                                 QStringLiteral("inputs 含重复文件：%1").arg(abs));
+        inputsAbs.append(abs);
+    }
+    // —— ② 模板静态预校验（D3：validateSteps 共享段 minSteps=1——单动词批是最常见批形态；一次
+    //    预校验覆盖全部件，「件 1 跑 30 分钟才发现模板 semi:15 越界」不可接受；不调 create 零副作用）——
+    QList<const EngineEntry*> stepEntries;
+    const QJsonObject terr = validateSteps(cmd, req, 1, &stepEntries);
+    if (!terr.isEmpty()) return terr;
+    // —— ③ workspace 必填（D5：批产物一律走工作区是红线——direct 批 = N 个散落产物无版本无登记，
+    //    pipeline D6 否决 direct 的理由对批逐条成立且被件数放大）——
+    const QString wsRoot = req.value(QStringLiteral("workspace")).toString();
+    if (wsRoot.isEmpty())
+        return errorResponse(cmd, errCodeText(ErrCode::Params), QStringLiteral("batch 必须带 workspace"));
+    // —— ④ 件循环：取消检查 → 组子请求 execute → 成功收 result 摘要/失败记 error 续跑（D4：
+    //    失败不中断是机制不是调用方纪律）/ E_CANCELLED 整批停（D7(a)——跳过当前件继续是另一个
+    //    功能 v1 无按钮）；进度两层等分（D6(a)：件 i 内部 p 映到 (i*100+p)/n，多步件内 pipeline
+    //    步层等分自动复合）；件间工作区隔离由内容哈希身份天然保证（D5）——
+    const QJsonArray steps = req.value(QStringLiteral("steps")).toArray();
+    const int n = inputs.size();
+    QJsonArray items;
+    int okCount = 0;
+    int completed = 0;// 已完整落定件数（取消响应的完成度口径，OQ-2(b)）
+    bool truncatedAny = false;
+    for (int i = 0; i < n; ++i) {
+        const QString input = inputs.at(i).toString();
+        if (ctx.cancel && ctx.cancel->load())// 每件开工前加查（件间空隙不漏检，NFR-R1 ≤1s 语义）
+            return batchCancelled(completed, n);
+        CommandLayer::Ctx subCtx;
+        subCtx.cancel = ctx.cancel;
+        subCtx.batchIndex = i + 1;
+        subCtx.batchTotal = n;
+        const int base = i * 100;
+        if (ctx.onProgress)
+            subCtx.onProgress = [ctx, base, n](int pct) { ctx.onProgress((base + pct) / n); };
+        const QJsonObject subResp = execute(itemRequest(steps, input, wsRoot), subCtx);
+        const QJsonObject subError = subResp.value(QStringLiteral("error")).toObject();
+        if (subError.value(QStringLiteral("code")).toString() == QLatin1String(errCodeText(ErrCode::Cancelled)))
+            return batchCancelled(completed, n);// 整批停：该件在途半成品已在子调用内清理，前序已提交件保留
+        QJsonObject item;
+        item.insert(QStringLiteral("index"), i + 1);// 1 基归属键（附裁 3：错误原文不缀「第 N 件」前缀，
+        item.insert(QStringLiteral("input"), input);// 归属在结构键；GUI 汇总行由壳拼）
+        if (subResp.value(QStringLiteral("ok")).toBool()) {
+            item.insert(QStringLiteral("ok"), true);
+            const QJsonObject r = subResp.value(QStringLiteral("result")).toObject();
+            for (auto it = r.begin(); it != r.end(); ++it)// 件响应 result 原样并入（保留各自 workspace——
+                item.insert(it.key(), it.value());// 批无「唯一末工作区」概念每件自报；多步件另含 steps 摘要）
+            truncatedAny = truncatedAny || r.value(QStringLiteral("truncated")).toBool();
+            ++okCount;
+        } else {
+            item.insert(QStringLiteral("ok"), false);
+            item.insert(QStringLiteral("error"), subError);// 产生点透传：多步件内已含步骤前缀与 step/stepCmd
+        }
+        items.append(item);
+        ++completed;
+    }
+    // —— ⑤ 聚合（D4/OQ-1(a)：ok = 编排层成功——批跑完（含部分失败）即 true，成败逐件活在
+    //    items[].ok + okCount/total；退出码随之表「批是否跑完」，判批成败看 okCount/items）——
+    QJsonObject result;
+    result.insert(QStringLiteral("total"), n);
+    result.insert(QStringLiteral("okCount"), okCount);
+    result.insert(QStringLiteral("truncated"), truncatedAny);// 件内真值在 items[].truncated/steps 逐项可查
+    result.insert(QStringLiteral("items"), items);
     return okResponse(cmd, result);
 }
 
@@ -485,6 +634,10 @@ const QList<BuiltinVerb>& builtinVerbs() {
         // 管线（FR-9 D9）：无引擎参与的编排处理器；拒 output（终产物路径由工作区版本化决定，D6）；
         // workspace 必填（cmdPipeline 内检，缺即 E_PARAMS）；steps 专有键
         {"pipeline", cmdPipeline, false, true, {"steps"}},
+        // 批处理（FR-10 D9）：无引擎参与的编排处理器（件循环组合既有 execute）；拒 output（件产物
+        // 路径由工作区版本化决定，D5）；workspace 必填（cmdBatch 内检）；inputs/steps 专有键；
+        // input 必填豁免——批用 inputs 数组，给了单数 input 即未知字段（与 model 族同型，D5）
+        {"batch", cmdBatch, false, true, {"inputs", "steps"}, false},
     };
     return verbs;
 }

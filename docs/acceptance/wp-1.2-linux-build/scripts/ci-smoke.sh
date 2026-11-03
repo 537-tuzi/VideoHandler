@@ -100,4 +100,11 @@ TMPDIR="$PIPETMP" bash docs/acceptance/fr9-pipeline/scripts/run-pipe.sh "$BUILD"
 TMPDIR="$PIPETMP" bash docs/acceptance/fr9-pipeline/scripts/gui-pipe.sh "$BUILD"
 TMPDIR="$PIPETMP" bash docs/acceptance/fr9-pipeline/scripts/missing-text.sh "$BUILD" # round-2：Fix 2 用途文案三态回归锁（MIST 族）
 
+echo "== 批处理队列（FR-10：BATCH 用例族，CLI 面 + GUI 壳探针；工作区走磁盘卷 TMPDIR 同 mdl 原因——"
+echo "   MEM 族 30min×2 素材与带模型批产物会撞 /tmp 配额，见 run-batch.sh 头注）=="
+BATCHTMP="$PWD/$BUILD/.batch-tmp" # 绝对路径，同 MDLTMP 口径
+mkdir -p "$BATCHTMP" # 复用目录，跑批 trap 自清内部工作区
+TMPDIR="$BATCHTMP" bash docs/acceptance/fr10-batch-queue/scripts/run-batch.sh "$BUILD"
+TMPDIR="$BATCHTMP" bash docs/acceptance/fr10-batch-queue/scripts/gui-batch.sh "$BUILD" # round-2：widget 面探针（BATCH-GUI 族）
+
 echo "== ci-smoke 全绿 =="

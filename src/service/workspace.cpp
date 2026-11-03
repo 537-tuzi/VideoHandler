@@ -294,6 +294,8 @@ bool commitVersion(const VersionPlan& plan, const QJsonObject& params, const QJs
                plan.parentVersion > 0 ? QJsonValue(plan.parentVersion) : QJsonValue(QJsonValue::Null));
     if (!plan.pipeline.isEmpty())// 管线标记按存在性插键（FR-9 D5/附裁 4）：非管线任务不含 → 逐字节零漂移
         rec.insert(QStringLiteral("pipeline"), plan.pipeline);
+    if (!plan.batch.isEmpty())// 批件标记按存在性插键（FR-10 D5/OQ-3）：非批任务不含 → 逐字节零漂移
+        rec.insert(QStringLiteral("batch"), plan.batch);
     rec.insert(QStringLiteral("output"), out);
 
     QJsonArray versions = idx.value(QStringLiteral("versions")).toArray();

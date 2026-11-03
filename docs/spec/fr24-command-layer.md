@@ -224,7 +224,7 @@ QJsonObject execute(const QJsonObject& request, const Ctx& ctx = {});
 | **5.1 注册表（NFR-M1）** | 每动词一个签名一致的独立处理器函数 + `execute` 集中分发；处理器无共享可变状态 | 不造 map/自描述条目/能力声明——8 动词造注册框架是空架子 |
 | **5.2 管线串联（FR-9）** | 信封是 JSON 对象，`pipeline` 动词 + `steps` 数组纯增量加入，不破坏既有契约；**不做 `engines` 数组**——多引擎链需要级间规格协商（每引擎 inRate/inChannels 不同，链上需逐段重采样）与独立 parity，是完整工作包，v1 预实现无法验证 | `transcodeStreamWav` 单引擎签名不动 |
 | **5.3 工作区（FR-A4）** | 输出路径决策收敛为命令层内单一函数（显式 `output` 优先，缺省走源目录后缀规则）；工作区包替换该函数即可接管全部动词的落盘位置。v1 已立原件只读防线：`output==input` → E_PARAMS（`extractAudio` 自动命名天然不与源冲突） | 不做版本化/哈希登记/回退 |
-| **5.4 批处理（FR-10）** | `execute` 无全局态、每调用自建引擎 → 可串行重入；CI 批量 = bash 循环调 `--json`，同步模型够 CI 用。队列/失败不中断语义是 GUI 服务层（mediaservice 演进）与 Agent 的事 | 不做任务队列/异步 API/进度事件流 |
+| **5.4 批处理（FR-10）** | ~~`execute` 无全局态、每调用自建引擎 → 可串行重入；CI 批量 = bash 循环调 `--json`，同步模型够 CI 用。队列/失败不中断语义是 GUI 服务层（mediaservice 演进）与 Agent 的事~~ **已由 FR-10 演进关闭（2026-11-04，附裁 4 记档）**：批队列/失败不中断/整批取消语义已落为命令层 `batch` 动词（`docs/spec/fr10-batch-queue.md`，inputs[≥2] × 共享 steps[≥1] 模板逐件组合既有 execute），CLI/GUI/Agent 三客户端同源 | 不做任务队列/异步 API/进度事件流（批内仍是同步串行；交互式队列留缝不变） |
 
 ## 6. 验证方案（概要，详表进 acceptance matrix）
 

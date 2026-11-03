@@ -38,6 +38,9 @@ struct ProbeInfo {
 // FR-9：doPipeline 槽收步骤数组 JSON——对无显式 model 的模型步逐个 resolveDefaultModel 补缺省后
 // 组 pipeline 请求走同一 runRequest；链中 E_MODEL 的 forVerb 取 error.stepCmd（附裁 1：管线响应
 // cmd=pipeline，照搬请求动词会引导错用途模型）
+// FR-10：doBatch 槽收件清单 + 共享模板两 JSON——开工前 resolveStepModels 一次解析（模板全批共享，
+// 附裁 1：解析失败 → batchFinished + modelMissing(动词) 整批速断，件循环内禁止再发）；批占 busy
+// 整批一锁，完成走 batchFinished（ok 时载批 result JSON，GUI 逐件渲染）
 class FFExtractor : public QObject
 {
     Q_OBJECT
@@ -57,6 +60,7 @@ private:
     void runRequest(const QJsonObject& req, const QString& okMsg);// 统一命令层收尾：请求交 execute（取消/进度经 Ctx 注入），响应拆包 → jobDone（成功文案由壳重建，spec D6）
     void runModelRequest(const QJsonObject& req, const QString& okPrefix);// 模型族收尾（FR-8 片 B）：同 runRequest 的 Ctx 注入，但不插 workspace 键（模型族拒收，D5）、不发 jobDone/modelMissing（模型操作非七槽任务，完成走 modelOpDone）
     QString resolveDefaultModel(const QString& forVerb, const QString& appDirModel) const;// 引擎动词缺省模型两级解析（FR-8 D1）：库该用途已装（modelList 视角）→ appDir bundled 兜底
+    bool resolveStepModels(QJsonArray* steps, QString* missingVerb, QString* missingMsg) const;// 步骤模板模型步两级缺省解析（FR-9 抽取共享；FR-10 doBatch 复用）：失败置 missingVerb/missingMsg 返回 false
     std::atomic<bool>* cancelFlag = nullptr;// 服务装配的取消标志，经 Ctx 透传给命令层分块循环检查
     QString workspaceRoot;// 工作区根（FR-A4 片 B，GUI 经队列信号注入）；空串 = 任务不带 workspace 键（direct 模式，CLI/默认构造零漂移）
     QString modelRoot;// 模型库根（FR-8 片 B，GUI 经队列信号注入）；空串 = 缺省解析不查库（appDir 单级 = 旧行为零漂移，探针/未配置环境确定性）
@@ -67,7 +71,8 @@ signals:
     void wsInfoDone(bool ok, const QString& json);// 处理历史查询完成（ok 时 json 为 result 的 Compact JSON，失败为错误说明）
     void modelListDone(bool ok, const QString& json);// 模型列表查询完成（wsInfoDone 同型：ok 时 json 为 result 的 Compact JSON，失败为错误说明）
     void modelOpDone(bool ok, const QString& message);// 模型下载/导入完成（长任务占 busy，MediaService 据此放锁；message 为壳重建文案或 error.message 直通）
-    void modelMissing(const QString& forVerb);// 结构化缺模型信号（FR-8 D8）：任务 E_MODEL / 两级缺省解析皆缺时随 jobDone 加发，引导打开模型管理（不走文案前缀匹配）；forVerb 为缺失模型所属引擎动词——管线链取 error.stepCmd（FR-9 附裁 1）
+    void modelMissing(const QString& forVerb);// 结构化缺模型信号（FR-8 D8）：任务 E_MODEL / 两级缺省解析皆缺时随 jobDone 加发，引导打开模型管理（不走文案前缀匹配）；forVerb 为缺失模型所属引擎动词——管线链取 error.stepCmd（FR-9 附裁 1）；批处理仅开工前解析失败可发（FR-10 附裁 1）
+    void batchFinished(bool ok, const QString& jsonOrMessage);// 批处理完成（FR-10 D5：busy 整批据此释放）：ok 时 jsonOrMessage 为批 result 的 Compact JSON（GUI 逐件渲染），失败为 error.message 逐字（含整批取消「已取消」）
 public slots:
     void setWorkspaceRoot(const QString& root);// 注入工作区根（装配期 setCancelFlag 同型，经队列信号投递到 worker 线程）
     void setModelRoot(const QString& root);// 注入模型库根（setWorkspaceRoot 同型；两级缺省解析与模型族请求的 root 来源）
@@ -83,4 +88,5 @@ public slots:
     void doPitchWav(const QString& inPath, double semiTones);// 后台变调转码（SoundTouch）
     void doSepVocals(const QString& inPath, bool instrumental);// 后台人声分离/伴奏提取转码（MDX-Net）
     void doPipeline(const QString& inPath, const QString& stepsJson);// 后台管线一键（FR-9：解析 steps → 模型步两级缺省解析 → 组 pipeline 请求走 runRequest）
+    void doBatch(const QString& inputsJson, const QString& stepsJson);// 后台批处理（FR-10：解析两 JSON → 开工前模板模型解析 → 组 batch 请求；完成走 batchFinished）
 };
