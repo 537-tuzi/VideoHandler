@@ -1,88 +1,133 @@
-case,round-1,说明
-MDL-001,PASS,modelList 空库：两条目 available/无 path/键集恰等/license 恒在
-MDL-002,PASS,modelList 查询不建目录不落盘
-MDL-003,PASS,modelList 缺省根回显 ~/VideoHandler-Models（只断目录常量）
-MDL-004,PASS,modelList root 类型错 → E_PARAMS
-MDL-005,PASS,modelList 未知字段 → E_PARAMS
-MDL-006,PASS,bundled 视角（探针可控 appDir）：随包 gtcrn installed+bundled+path
-MDL-007,PASS,bundled 查询同样不落盘
-MDL-020,PASS,下载正路：sha256 落位比对/无 .part 残留/登记 source=download
-MDL-020s,PASS,产物 sha256sum 与目录表一致
-MDL-020p,PASS,无 .part 残留
-MDL-020m,PASS,models.json 登记 source=download
-MDL-020j,PASS,models.json 登记 sha256 与目录表一致
-MDL-021,PASS,幂等重跑：ok 返回现路径
-MDL-021z,PASS,幂等重跑零网络请求（服务日志行数不变）
-MDL-024t,PASS,登记后产物截断 → 幂等失配重下治愈（日志增长+盘上 sha 还原；测试轮 F-2，tn/ts 为其子断言）
-MDL-023,PASS,清单丢失但产物在位：现算指纹收编仍零网络
-MDL-023m,PASS,收编登记 source=local
-MDL-023z,PASS,收编幂等：日志零新增网络请求（补记 round-1 已跑用例，脚本 :189）
-MDL-008,PASS,删产物后清单条目残留 → status=stale 不静默当已装
-MDL-009,PASS,models.json 损坏按空处理（list 恒 ok）
-MDL-009b,PASS,损坏后下载治愈清单（重写合法 models.json）
-MDL-009m,PASS,治愈后清单恰 1 条
-MDL-030,PASS,cutmid 掐断：E_NET 网络连接失败（重试 2 次后）
-MDL-030p,PASS,掐断后 .part 保留（OQ-6 续传缓存）
-MDL-030s,PASS,无最终产物
-MDL-030g,PASS,同调用内重试已发 Range（服务日志 bytes=200000-）
-MDL-031,PASS,跨调用续传：ok + sha256 一致
-MDL-031s,PASS,续传产物 sha256 一致
-MDL-031p,PASS,续传完成无 .part 残留
-MDL-031g,PASS,Range 请求头 ground truth（服务日志 GET range=bytes=N- status=206）
-MDL-032,PASS,服务器 200 不支持 Range：弃损坏 .part 全量重写（残留必致 sha 失败）
-MDL-032s,PASS,200 重写产物 sha256 一致
-MDL-040,PASS,未知 id → E_PARAMS 未知模型
-MDL-041,PASS,恒 404 → E_NET（HEAD 段 HTTP 错误）
-MDL-042,PASS,恒 429 → E_NET + 「稍后再试或换镜像」专属文案
-MDL-043,PASS,端口未开连接拒绝 → E_NET 重试后失败
-MDL-043p,PASS,无 .part（未触传输）
-MDL-044,PASS,内容错（无 ETag）→ 收尾 sha256 兜底 E_NET
-MDL-044p,PASS,sha 不符删 .part（与断连保留相反）
-MDL-044d,PASS,无最终产物
-MDL-044m,PASS,失败不写 models.json
-MDL-045,PASS,endpoint 类型错 → E_PARAMS
-MDL-046,PASS,未知字段 → E_PARAMS
-MDL-047,PASS,id 缺失 → E_PARAMS
-MDL-048,PASS,modelDownload 带 input → 未知字段：input（不进白名单）
-MDL-049,PASS,ETag 与目录不符 → E_NET 拒下
-MDL-049p,PASS,无 .part
-MDL-050,PASS,HEAD 正常 GET 404 → E_NET（GET 段 HTTP 错误）
-MDL-050p,PASS,无 .part
-MDL-051,PASS,endpoint 非 http(s) scheme → E_PARAMS
-MDL-052,PASS,已装库不受负例干扰（仍 installed）
-MDL-060,PASS,by-id 导入正路：指纹对照 + 按条目登记 + license 取条目值
-MDL-060s,PASS,入库产物 sha256 一致
-MDL-060i,PASS,复制绝不移动（原件仍在）；源 sha 前后不变由 MDL-999 聚合哈希间接覆盖（IN/*.onnx 在终闸集合内，P3-6 注记）
-MDL-060p,PASS,无 .part 残留
-MDL-060m,PASS,登记 source=import
-MDL-061,PASS,by-id 指纹不符 → E_MODEL
-MDL-061p,PASS,失败零残留
-MDL-061x,PASS,失败导入不覆盖既有登记产物
-MDL-062,PASS,自由导入：setup 试开通过 + id=stem 净化 + license=unknown
-MDL-062s,PASS,入库产物 sha256 一致
-MDL-062b,PASS,目标路径被其他 id 登记占用 → E_PARAMS 且清单不改写不落产物（双 id 同路径防线，审查 P1-1）
-MDL-062c,PASS,目标与内置目录条目路径冲突 → E_PARAMS 且拒收零落盘（审查 P1-1 同根）
-MDL-062u,PASS,导入 id 已被不同内容登记占用 → E_PARAMS（id 遮蔽防线，审查 P2-1）
-MDL-062r,PASS,重复导入同 id 同 sha → 翻新幂等保留（防线加严的回归保护）
-MDL-063,PASS,自由导入坏模型 → E_MODEL（setup 即权威校验器）
-MDL-063p,PASS,失败零残留
-MDL-064,PASS,for 非模型动词 → E_PARAMS for 只接受
-MDL-065,PASS,id/for 皆缺 → E_PARAMS 导入须带
-MDL-066,PASS,源缺失 → E_FILE 打不开文件
-MDL-067,PASS,只读根 → E_FILE + 零残留（root 用户 SKIP）
-MDL-067p,PASS,只读根失败无 .part
-MDL-069,PASS,path 类型错 → E_PARAMS
-MDL-070,PASS,导入 id 未知 → E_PARAMS
-MDL-010,PASS,目录外清单条目入列（自由导入社区模型前门）
-MDL-080,PASS,modelList 免 input（信封分叉命门）
-MDL-081,PASS,未知命令错误形状不变（frobnicate）
-MDL-081r,PASS,CMD-021r 同款响应原文逐字节一致
-MDL-082,PASS,旧动词 input 缺失文案不变（probe）
-MDL-082b,PASS,旧动词 input 缺失文案不变（transcode）
-MDL-083,PASS,model 族拒收 workspace（OQ-8）
-MDL-084,PASS,model 族拒收 output
-MDL-090,PASS,预置取消：E_CANCELLED + 零网络请求（服务日志不变）
-MDL-091,PASS,中段取消：E_CANCELLED + .part 保留
-MDL-092,PASS,取消→重跑续传闭环：ok + sha256
-MDL-092g,PASS,闭环含 Range 续传（服务日志实锤）
-MDL-999,PASS,完整性终闸：fixture 与 third_party 全程未被改动
+case,round-1,round-3,round-4,说明
+MDL-001,PASS,PASS,PASS,modelList 空库：两条目 available/无 path/键集恰等/license 恒在
+MDL-002,PASS,PASS,PASS,modelList 查询不建目录不落盘
+MDL-003,PASS,PASS,PASS,modelList 缺省根回显 ~/VideoHandler-Models（只断目录常量）
+MDL-004,PASS,PASS,PASS,modelList root 类型错 → E_PARAMS
+MDL-005,PASS,PASS,PASS,modelList 未知字段 → E_PARAMS
+MDL-006,PASS,PASS,PASS,bundled 视角（探针可控 appDir）：随包 gtcrn installed+bundled+path
+MDL-007,PASS,PASS,PASS,bundled 查询同样不落盘
+MDL-020,PASS,PASS,PASS,下载正路：sha256 落位比对/无 .part 残留/登记 source=download
+MDL-020s,PASS,PASS,PASS,产物 sha256sum 与目录表一致
+MDL-020p,PASS,PASS,PASS,无 .part 残留
+MDL-020m,PASS,PASS,PASS,models.json 登记 source=download
+MDL-020j,PASS,PASS,PASS,models.json 登记 sha256 与目录表一致
+MDL-021,PASS,PASS,PASS,幂等重跑：ok 返回现路径
+MDL-021z,PASS,PASS,PASS,幂等重跑零网络请求（服务日志行数不变）
+MDL-024t,PASS,PASS,PASS,登记后产物截断 → 幂等失配重下治愈（日志增长+盘上 sha 还原；测试轮 F-2，tn/ts 为其子断言）
+MDL-023,PASS,PASS,PASS,清单丢失但产物在位：现算指纹收编仍零网络
+MDL-023m,PASS,PASS,PASS,收编登记 source=local
+MDL-023z,PASS,PASS,PASS,收编幂等：日志零新增网络请求（补记 round-1 已跑用例，脚本 :189）
+MDL-008,PASS,PASS,PASS,删产物后清单条目残留 → status=stale 不静默当已装
+MDL-009,PASS,PASS,PASS,models.json 损坏按空处理（list 恒 ok）
+MDL-009b,PASS,PASS,PASS,损坏后下载治愈清单（重写合法 models.json）
+MDL-009m,PASS,PASS,PASS,治愈后清单恰 1 条
+MDL-030,PASS,PASS,PASS,cutmid 掐断：E_NET 网络连接失败（重试 2 次后）
+MDL-030p,PASS,PASS,PASS,掐断后 .part 保留（OQ-6 续传缓存）
+MDL-030s,PASS,PASS,PASS,无最终产物
+MDL-030g,PASS,PASS,PASS,同调用内重试已发 Range（服务日志 bytes=200000-）
+MDL-031,PASS,PASS,PASS,跨调用续传：ok + sha256 一致
+MDL-031s,PASS,PASS,PASS,续传产物 sha256 一致
+MDL-031p,PASS,PASS,PASS,续传完成无 .part 残留
+MDL-031g,PASS,PASS,PASS,Range 请求头 ground truth（服务日志 GET range=bytes=N- status=206）
+MDL-032,PASS,PASS,PASS,服务器 200 不支持 Range：弃损坏 .part 全量重写（残留必致 sha 失败）
+MDL-032s,PASS,PASS,PASS,200 重写产物 sha256 一致
+MDL-040,PASS,PASS,PASS,未知 id → E_PARAMS 未知模型
+MDL-041,PASS,PASS,PASS,恒 404 → E_NET（HEAD 段 HTTP 错误）
+MDL-042,PASS,PASS,PASS,恒 429 → E_NET + 「稍后再试或换镜像」专属文案
+MDL-043,PASS,PASS,PASS,端口未开连接拒绝 → E_NET 重试后失败
+MDL-043p,PASS,PASS,PASS,无 .part（未触传输）
+MDL-044,PASS,PASS,PASS,内容错（无 ETag）→ 收尾 sha256 兜底 E_NET
+MDL-044p,PASS,PASS,PASS,sha 不符删 .part（与断连保留相反）
+MDL-044d,PASS,PASS,PASS,无最终产物
+MDL-044m,PASS,PASS,PASS,失败不写 models.json
+MDL-045,PASS,PASS,PASS,endpoint 类型错 → E_PARAMS
+MDL-046,PASS,PASS,PASS,未知字段 → E_PARAMS
+MDL-047,PASS,PASS,PASS,id 缺失 → E_PARAMS
+MDL-048,PASS,PASS,PASS,modelDownload 带 input → 未知字段：input（不进白名单）
+MDL-049,PASS,PASS,PASS,ETag 与目录不符 → E_NET 拒下
+MDL-049p,PASS,PASS,PASS,无 .part
+MDL-050,PASS,PASS,PASS,HEAD 正常 GET 404 → E_NET（GET 段 HTTP 错误）
+MDL-050p,PASS,PASS,PASS,无 .part
+MDL-051,PASS,PASS,PASS,endpoint 非 http(s) scheme → E_PARAMS
+MDL-051d,,PASS,参数拒绝零落盘副作用（测试轮 P3：修复前 mkpath 先于校验留空 <root>/separator/ 目录）
+MDL-052,PASS,PASS,PASS,已装库不受负例干扰（仍 installed）
+MDL-060,PASS,PASS,PASS,by-id 导入正路：指纹对照 + 按条目登记 + license 取条目值
+MDL-060s,PASS,PASS,PASS,入库产物 sha256 一致
+MDL-060i,PASS,PASS,PASS,复制绝不移动（原件仍在）；源 sha 前后不变由 MDL-999 聚合哈希间接覆盖（IN/*.onnx 在终闸集合内，P3-6 注记）
+MDL-060p,PASS,PASS,PASS,无 .part 残留
+MDL-060m,PASS,PASS,PASS,登记 source=import
+MDL-061,PASS,PASS,PASS,by-id 指纹不符 → E_MODEL
+MDL-061p,PASS,PASS,PASS,失败零残留
+MDL-061x,PASS,PASS,PASS,失败导入不覆盖既有登记产物
+MDL-062,PASS,PASS,PASS,自由导入：setup 试开通过 + id=stem 净化 + license=unknown
+MDL-062s,PASS,PASS,PASS,入库产物 sha256 一致
+MDL-062b,PASS,PASS,PASS,目标路径被其他 id 登记占用 → E_PARAMS 且清单不改写不落产物（双 id 同路径防线，审查 P1-1）
+MDL-062c,PASS,PASS,PASS,目标与内置目录条目路径冲突 → E_PARAMS 且拒收零落盘（审查 P1-1 同根）
+MDL-062u,PASS,PASS,PASS,导入 id 已被不同内容登记占用 → E_PARAMS（id 遮蔽防线，审查 P2-1）
+MDL-062r,PASS,PASS,PASS,重复导入同 id 同 sha → 翻新幂等保留（防线加严的回归保护）
+MDL-063,PASS,PASS,PASS,自由导入坏模型 → E_MODEL（setup 即权威校验器）
+MDL-063p,PASS,PASS,PASS,失败零残留
+MDL-064,PASS,PASS,PASS,for 非模型动词 → E_PARAMS for 只接受
+MDL-065,PASS,PASS,PASS,id/for 皆缺 → E_PARAMS 导入须带
+MDL-066,PASS,PASS,PASS,源缺失 → E_FILE 打不开文件
+MDL-067,PASS,PASS,PASS,只读根 → E_FILE + 零残留（root 用户 SKIP）
+MDL-067p,PASS,PASS,PASS,只读根失败无 .part
+MDL-069,PASS,PASS,PASS,path 类型错 → E_PARAMS
+MDL-070,PASS,PASS,PASS,导入 id 未知 → E_PARAMS
+MDL-010,PASS,PASS,PASS,目录外清单条目入列（自由导入社区模型前门）
+MDL-080,PASS,PASS,PASS,modelList 免 input（信封分叉命门）
+MDL-081,PASS,PASS,PASS,未知命令错误形状不变（frobnicate）
+MDL-081r,PASS,PASS,PASS,CMD-021r 同款响应原文逐字节一致
+MDL-082,PASS,PASS,PASS,旧动词 input 缺失文案不变（probe）
+MDL-082b,PASS,PASS,PASS,旧动词 input 缺失文案不变（transcode）
+MDL-083,PASS,PASS,PASS,model 族拒收 workspace（OQ-8）
+MDL-084,PASS,PASS,PASS,model 族拒收 output
+MDL-090,PASS,PASS,PASS,预置取消：E_CANCELLED + 零网络请求（服务日志不变）
+MDL-091,PASS,PASS,PASS,中段取消：E_CANCELLED + .part 保留
+MDL-092,PASS,PASS,PASS,取消→重跑续传闭环：ok + sha256
+MDL-092g,PASS,PASS,PASS,闭环含 Range 续传（服务日志实锤）
+MDL-093,,PASS,导入复制环中段取消：E_CANCELLED + .part 即删 + 库树零落位（测试轮覆盖空白补面；首进度回调兼作取消锚，修复前无回调导入跑完即 FAIL）
+MDL-999,PASS,PASS,PASS,完整性终闸：fixture 与 third_party 全程未被改动
+GML-101,,PASS,PASS,engine 相 appDir 无模型+库空：锁定文案「找不到 AI 降噪模型：%1」（%1=bundled 路径，GUI-EQV 锁字）+ 任务失败
+GML-101m,,PASS,PASS,两级皆缺 → pre-check 发结构化 modelMissing 1 次（D8 结构化信号，非文案前缀匹配）
+GML-101p,,PASS,PASS,失败任务不落版本记录（MODELPATH -）
+GML-101n,,PASS,负例守卫：模型在位+输入缺失 → E_FILE 任务失败（审查 P3-3a）
+GML-101nm,,PASS,负例守卫：modelMissing 0（结构化信号仅随 E_MODEL 触发）
+GML-102,,PASS,PASS,库已装 gtcrn（appDir 无模型）→ 任务 ok，文案「AI 降噪完成：…」
+GML-102p,,PASS,PASS,选用模型真值 = 版本记录 model.path = 库路径（ground truth 非文案）
+GML-102m,,PASS,PASS,成功路径 modelMissing 0（无误发）
+GML-103,,PASS,PASS,库+随包两级都在 → 取库（优先级实证：库优先于随包）
+GML-103bt,,PASS,跨 id 遮蔽回归：随包在位 + 库内导入 my-gtcrn → 任务 ok（审查 P1-1）
+GML-103b,,PASS,跨 id 遮蔽回归：MODELPATH=库内导入路径（修复前取随包——bundled 视角压过用户导入，GUI 导入成死胡同）
+GML-104,,PASS,PASS,库无已装 → 随包兜底（MODELPATH=appDir bundled）
+GML-105,,PASS,PASS,根未注入（成员空串）→ 不查库取随包 = 旧行为零漂移（库在盘确有 gtcrn，误查即穿帮）
+GML-106,,PASS,PASS,separator 槽同型两级解析：库已装 uvr → ok +「人声分离完成：…」
+GML-106p,,PASS,PASS,版本记录 model.path = 库 uvr 路径
+GML-107,,PASS,PASS,两级皆缺 → 锁定文案「找不到人声分离模型：%1」（%1=bundled）
+GML-107m,,PASS,PASS,modelMissing 1
+GML-110,,PASS,PASS,对话框缺省 endpoint = https://huggingface.co（D4）
+GML-110r,,PASS,PASS,库根标签 = QSettings modelRoot（MainWidget 构造期读路径 D7）
+GML-110t,,PASS,PASS,列表渲染 ROW0=gtcrn 可下载（状态中文映射）
+GML-110c,,PASS,PASS,对话框非模态：可关闭复开
+GML-110n,,PASS,镜像适用性注记锁字（审查 P1-2：D4 明文「该源不受镜像影响」UI 兑现）
+GML-111,,PASS,PASS,下载占 busy：操作键锁/取消键开/进度条显
+GML-112,,PASS,PASS,modelList 只读不占 busy（下载进行中查询照常回传）
+GML-113,,PASS,PASS,取消文案「已取消」直通（GUI-EQV 锁字面）
+GML-113p,,PASS,PASS,取消保留 .part（OQ-6 续传缓存）
+GML-113u,,PASS,PASS,完成放锁（操作键复原/取消键锁）
+GML-114e,,PASS,PASS,E_MODEL 任务文案非空（jobFinished ok=0 载荷；注入源=appDir 损坏垃圾字节，pre-check 放行 → E_MODEL 必出自 runRequest）
+GML-114,,PASS,PASS,modelMissing 问询框出现且答 Yes（结构化信号→引导链，含 F-2 解药附注）
+GML-114d,,PASS,PASS,Yes → 打开模型管理对话框且列表已刷
+GML-115,,PASS,PASS,续传闭环完成：文案「模型下载完成：<库路径>」
+GML-115s,,PASS,PASS,下载完成后列表翻「已安装」+ 库树无 .part
+GML-115f,,PASS,PASS,对话框路径下载产物 sha256 = 目录表基准（= third_party 权重字节）
+GML-115r,,PASS,完成刷新后选中按 id 恢复（测试轮 D1；修复前恒回首行 → 下载键静默改目标，错击直连条目真外联）
+GML-116,,PASS,PASS,§161 许可提示逐字「请确认您有权使用该模型（来源与许可证由您自行核验）」
+GML-116i,,PASS,PASS,导入全链（QFileDialog 选文件→用途对话框→提交）ok
+GML-116r,,PASS,PASS,导入后列表新增 my-gtcrn「已安装」
+GML-116f,,PASS,PASS,导入落位产物 sha256 = 源文件字节（复制非移动）
+GML-116g,,PASS,导入进度真值：复制段 0–99 + 登记成功收尾 100（审查 P2-3，D5 进度面兑现）
+GML-117,,PASS,PASS,endpoint QSettings 记忆（换选镜像预设后 kSettingsModelEndpoint 持久化）
+GML-118,,PASS,PASS,换根全链（目录对话框 → 标签更新/根下传/列表刷新）
+GML-118s,,PASS,PASS,库根 QSettings 写路径（kSettingsModelRoot 新值落盘）
+GML-119,,PASS,PASS,GUI 相终态：库树无 .part 残留（取消/完成两路径均自洽）

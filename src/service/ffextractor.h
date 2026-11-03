@@ -30,7 +30,11 @@ struct ProbeInfo {
 // FFmpeg 任务执行者：提取/探测静态核心供命令层复用，slots 为 GUI worker 壳——组 JSON 请求走
 // CommandLayer::execute（FR-24 片 D），取消/进度经 Ctx 注入，响应拆包重建 GUI 文案（逐字不变）。
 // FR-A4 片 B：任务请求经 setWorkspaceRoot 注入的根组 workspace 键（空串不组键 = direct 模式零漂移）；
-// 历史查询 doWsInfo 走同一 execute（wsInfo 只读动词，首查大文件哈希在 worker 线程不冻 UI）
+// 历史查询 doWsInfo 走同一 execute（wsInfo 只读动词，首查大文件哈希在 worker 线程不冻 UI）。
+// FR-8 片 B：模型族三槽（doModelList/doModelDownload/doModelImport）同走 execute（GUI 不直调
+// ModelManager 的单一通路红线）；AI 降噪/人声分离缺省解析两级化（模型库已装 → appDir bundled，
+// 经 setModelRoot 注入的根，空串不查库 = 旧行为零漂移）；任务响应 E_MODEL 加发结构化信号
+// modelMissing（D8 首次使用引导，不走文案前缀匹配）
 class FFExtractor : public QObject
 {
     Q_OBJECT
@@ -48,16 +52,26 @@ public:
                                 const QString& outPath = {}, const QString& outDir = {});// 提取无声视频；outPath 空 = 自动命名（outDir 语义同 extractAudio）
 private:
     void runRequest(const QJsonObject& req, const QString& okMsg);// 统一命令层收尾：请求交 execute（取消/进度经 Ctx 注入），响应拆包 → jobDone（成功文案由壳重建，spec D6）
+    void runModelRequest(const QJsonObject& req, const QString& okPrefix);// 模型族收尾（FR-8 片 B）：同 runRequest 的 Ctx 注入，但不插 workspace 键（模型族拒收，D5）、不发 jobDone/modelMissing（模型操作非七槽任务，完成走 modelOpDone）
+    QString resolveDefaultModel(const QString& forVerb, const QString& appDirModel) const;// 引擎动词缺省模型两级解析（FR-8 D1）：库该用途已装（modelList 视角）→ appDir bundled 兜底
     std::atomic<bool>* cancelFlag = nullptr;// 服务装配的取消标志，经 Ctx 透传给命令层分块循环检查
     QString workspaceRoot;// 工作区根（FR-A4 片 B，GUI 经队列信号注入）；空串 = 任务不带 workspace 键（direct 模式，CLI/默认构造零漂移）
+    QString modelRoot;// 模型库根（FR-8 片 B，GUI 经队列信号注入）；空串 = 缺省解析不查库（appDir 单级 = 旧行为零漂移，探针/未配置环境确定性）
 signals:
     void progress(int pct);// 任务进度百分比
     void jobDone(bool ok, const QString& message);// 任务完成通知
     void probeDone(bool ok, const QString& info);// 文件探测完成
     void wsInfoDone(bool ok, const QString& json);// 处理历史查询完成（ok 时 json 为 result 的 Compact JSON，失败为错误说明）
+    void modelListDone(bool ok, const QString& json);// 模型列表查询完成（wsInfoDone 同型：ok 时 json 为 result 的 Compact JSON，失败为错误说明）
+    void modelOpDone(bool ok, const QString& message);// 模型下载/导入完成（长任务占 busy，MediaService 据此放锁；message 为壳重建文案或 error.message 直通）
+    void modelMissing();// 结构化缺模型信号（FR-8 D8）：任务 E_MODEL / 两级缺省解析皆缺时随 jobDone 加发，引导打开模型管理（不走文案前缀匹配）
 public slots:
     void setWorkspaceRoot(const QString& root);// 注入工作区根（装配期 setCancelFlag 同型，经队列信号投递到 worker 线程）
+    void setModelRoot(const QString& root);// 注入模型库根（setWorkspaceRoot 同型；两级缺省解析与模型族请求的 root 来源）
     void doWsInfo(const QString& input);// 后台处理历史查询（wsInfo 只读动词，不占 busy；root 取注入成员）
+    void doModelList();// 后台模型列表查询（modelList 只读动词，不占 busy，doWsInfo 同型；root 取注入成员）
+    void doModelDownload(const QString& id, const QString& endpoint);// 后台模型下载（占 busy：取消/进度经 Ctx，root 取注入成员）
+    void doModelImport(const QString& path, const QString& forVerb);// 后台模型导入（自由导入带 for，D6 形态 2；占 busy，root 取注入成员）
     void doExtractAudio(const QString& inPath);// 后台提取音轨
     void doExtractVideo(const QString& inPath);// 后台提取无声视频
     void doProbe(const QString& inPath);// 后台探测文件流信息

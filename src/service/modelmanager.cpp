@@ -509,12 +509,8 @@ QJsonObject downloadModel(const QString& id, const QString& root, const QString&
             return okResult(id, bp, e->sha256, bf.size());// appDir bundled 在位（两级解析第二级）
     }
 
-    if (!QDir().mkpath(destDir)) {
-        *err = {ErrCode::File, QStringLiteral("模型库目录建不了：%1").arg(destDir)};
-        return {};
-    }
-
-    // —— 网络面：URL 组装（镜像只对 hfSource 生效——GTCRN 直连 GitHub，endpoint 对其无效，D4 注记）——
+    // —— 网络面：URL 组装（镜像只对 hfSource 生效——GTCRN 直连 GitHub，endpoint 对其无效，D4 注记）。
+    //    组装+校验先于一切落盘副作用（测试轮 P3：非法 endpoint 曾在 E_PARAMS 拒绝前留下空目录）——
     const QString effectiveEndpoint = endpoint.isEmpty()
         ? QString::fromLatin1(kDefaultModelEndpoint) : endpoint;
     const QUrl url = e->hfSource
@@ -522,6 +518,11 @@ QJsonObject downloadModel(const QString& id, const QString& root, const QString&
         : QUrl(e->directUrl);
     if (!url.isValid() || (url.scheme() != QLatin1String("http") && url.scheme() != QLatin1String("https"))) {
         *err = {ErrCode::Params, QStringLiteral("endpoint 不是合法的 http(s) 地址：%1").arg(effectiveEndpoint)};
+        return {};
+    }
+
+    if (!QDir().mkpath(destDir)) {
+        *err = {ErrCode::File, QStringLiteral("模型库目录建不了：%1").arg(destDir)};
         return {};
     }
     QNetworkAccessManager qnam;
@@ -707,6 +708,7 @@ QJsonObject importModel(const QString& id, const QString& forVerb, const QString
         return {};
     }
     const QString partPath = dest + QLatin1String(kPartSuffix);
+    const qint64 importTotal = src.size();// 进度分母（D5：导入同占 busy+进度条；0–99 按已复制字节）
     {
         QFile in(src.absoluteFilePath());
         QFile out(partPath);
@@ -717,6 +719,7 @@ QJsonObject importModel(const QString& id, const QString& forVerb, const QString
             return {};
         }
         char buf[kHashBufBytes];
+        qint64 copied = 0;
         forever {
             if (ctx.cancel && ctx.cancel->load()) {
                 QFile::remove(partPath);
@@ -735,6 +738,9 @@ QJsonObject importModel(const QString& id, const QString& forVerb, const QString
                 *err = {ErrCode::File, QStringLiteral("写模型临时文件失败：%1").arg(partPath)};
                 return {};
             }
+            copied += n;
+            if (ctx.onProgress && importTotal > 0)// 试开/sha 阶段无粒度，进度只在复制段（与下载器 0–99 同口径）
+                ctx.onProgress(static_cast<int>(copied * 99 / importTotal));// copied≤total → 恒在 0–99
         }
     }
     if (QFileInfo::exists(dest)) QFile::remove(dest);// 重复导入同 id：内容已验，原地翻新
@@ -751,6 +757,7 @@ QJsonObject importModel(const QString& id, const QString& forVerb, const QString
             return {};
         }
     }
+    if (ctx.onProgress) ctx.onProgress(100);// 收尾 100（登记成功才算完，与下载器同口径）
     QJsonObject result = okResult(useId, dest, sha, QFileInfo(dest).size());
     result.insert(QStringLiteral("license"), license);
     return result;

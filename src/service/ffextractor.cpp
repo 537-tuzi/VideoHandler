@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStringList>
@@ -131,6 +132,43 @@ void FFExtractor::setWorkspaceRoot(const QString& root) {
     workspaceRoot = root;
 }
 
+void FFExtractor::setModelRoot(const QString& root) {
+    modelRoot = root;
+}
+
+// 引擎动词缺省模型两级解析（FR-8 片 B，D1——fr24 spec :85 接管点的 GUI 兑现）：
+// 模型库该用途已装（modelList 视角）→ appDir bundled 兜底。查库走 execute 组 JSON（单一通路，
+// 不直调 ModelManager）；根未注入（空串）不查库 = appDir 单级旧行为（探针/未配置环境零漂移，
+// 亦免受机器缺省根 ~/VideoHandler-Models 存量态影响）。v1 每用途一模型无歧义（FR-4 多模型
+// 档位是 §5 留缝）；查询失败不拦任务，兜底 bundled 路径交命令层给权威错误。
+// 取「installed 且非 bundled」的首条：bundled 标志 = 该条目当前解析到
+// 随包副本（目录条目未登记而 appDir 在位时为 true，modelmanager 目录视角），不滤则随包压过用户
+// 导入的库内同用途模型——跨 id 遮蔽使 GUI 导入对该动词成为死胡同（审查轮 P1-1，GML-103b 回归）。
+QString FFExtractor::resolveDefaultModel(const QString& forVerb, const QString& appDirModel) const {
+    if (modelRoot.isEmpty()) return appDirModel;
+    QJsonObject req;
+    req.insert(QStringLiteral("v"), 1);
+    req.insert(QStringLiteral("cmd"), QStringLiteral("modelList"));
+    req.insert(QStringLiteral("root"), modelRoot);
+    QJsonObject resp;
+    try {
+        resp = CommandLayer::execute(req);
+    } catch (...) {
+        return appDirModel;
+    }
+    if (!resp.value(QStringLiteral("ok")).toBool()) return appDirModel;
+    const QJsonArray models = resp.value(QStringLiteral("result")).toObject()
+                                  .value(QStringLiteral("models")).toArray();
+    for (const QJsonValue& v : models) {
+        const QJsonObject m = v.toObject();
+        if (m.value(QStringLiteral("for")).toString() == forVerb
+            && m.value(QStringLiteral("status")).toString() == QStringLiteral("installed")
+            && !m.value(QStringLiteral("bundled")).toBool())// 库内登记优先；bundled 在位留给第二级兜底
+            return m.value(QStringLiteral("path")).toString();
+    }
+    return appDirModel;
+}
+
 // 处理历史查询（FR-A4 片 B）：wsInfo 只读动词走同一 execute，root 用注入成员（与任务请求同根，
 // 保证历史查的正是任务落的）；result 序列化为 Compact JSON 经信号回传（QString，免自定义 QMetaType），
 // 失败回传 error message。不占 busy——首查大文件哈希数秒，在 worker 线程跑正是为了不冻 UI
@@ -157,6 +195,81 @@ void FFExtractor::doWsInfo(const QString& input) {
         emit wsInfoDone(false, resp.value(QStringLiteral("error")).toObject()
                              .value(QStringLiteral("message")).toString());
     }
+}
+
+// 模型列表查询（FR-8 片 B，doWsInfo 同型只读不占 busy）：modelList 走同一 execute，root 用注入
+// 成员（与下载/导入同根，保证查的正是要落的库）；result 序列化为 Compact JSON 经信号回传，
+// 失败回传 error message
+void FFExtractor::doModelList() {
+    QJsonObject req;
+    req.insert(QStringLiteral("v"), 1);
+    req.insert(QStringLiteral("cmd"), QStringLiteral("modelList"));
+    if (!modelRoot.isEmpty()) req.insert(QStringLiteral("root"), modelRoot);
+    QJsonObject resp;
+    try {
+        resp = CommandLayer::execute(req);// 只读查询：无取消/进度语义，Ctx 缺省
+    } catch (const std::exception& e) {
+        emit modelListDone(false, QStringLiteral("查询异常终止：%1").arg(QString::fromUtf8(e.what())));
+        return;
+    } catch (...) {
+        emit modelListDone(false, QStringLiteral("查询异常终止（未知异常）"));
+        return;
+    }
+    if (resp.value(QStringLiteral("ok")).toBool()) {
+        const QJsonDocument doc(resp.value(QStringLiteral("result")).toObject());
+        emit modelListDone(true, QString::fromUtf8(doc.toJson(QJsonDocument::Compact)));
+    } else {
+        emit modelListDone(false, resp.value(QStringLiteral("error")).toObject()
+                                 .value(QStringLiteral("message")).toString());
+    }
+}
+
+// 模型族请求收尾（FR-8 片 B）：与 runRequest 同型的 Ctx 注入（下载占 busy、可取消、进度走既有
+// progress 信号），差异三处——不插 workspace 键（模型族动词拒收 workspace，D5/OQ-8）；完成走
+// modelOpDone 而非 jobDone（模型操作非七槽任务，MediaService 据此独立放锁）；不发 modelMissing
+// （导入 E_MODEL 属「候选文件不是可用模型」校验语义，用户已在管理对话框内，无引导可给）。
+void FFExtractor::runModelRequest(const QJsonObject& req, const QString& okPrefix) {
+    CommandLayer::Ctx ctx;
+    ctx.cancel = cancelFlag;
+    ctx.onProgress = [this](int pct) { emit progress(pct); };
+    QJsonObject resp;
+    try {
+        resp = CommandLayer::execute(req, ctx);
+    } catch (const std::exception& e) {
+        emit modelOpDone(false, QStringLiteral("模型操作异常终止：%1").arg(QString::fromUtf8(e.what())));
+        return;
+    } catch (...) {
+        emit modelOpDone(false, QStringLiteral("模型操作异常终止（未知异常）"));
+        return;
+    }
+    if (resp.value(QStringLiteral("ok")).toBool()) {
+        const QString out = resp.value(QStringLiteral("result")).toObject()
+                                .value(QStringLiteral("path")).toString();
+        emit modelOpDone(true, okPrefix + QStringLiteral("：%1").arg(out));
+    } else {
+        emit modelOpDone(false, resp.value(QStringLiteral("error")).toObject()
+                                 .value(QStringLiteral("message")).toString());
+    }
+}
+
+void FFExtractor::doModelDownload(const QString& id, const QString& endpoint) {
+    QJsonObject req;
+    req.insert(QStringLiteral("v"), 1);
+    req.insert(QStringLiteral("cmd"), QStringLiteral("modelDownload"));
+    req.insert(QStringLiteral("id"), id);
+    if (!modelRoot.isEmpty()) req.insert(QStringLiteral("root"), modelRoot);
+    if (!endpoint.isEmpty()) req.insert(QStringLiteral("endpoint"), endpoint);
+    runModelRequest(req, QStringLiteral("模型下载完成"));
+}
+
+void FFExtractor::doModelImport(const QString& path, const QString& forVerb) {
+    QJsonObject req;
+    req.insert(QStringLiteral("v"), 1);
+    req.insert(QStringLiteral("cmd"), QStringLiteral("modelImport"));
+    req.insert(QStringLiteral("path"), path);
+    req.insert(QStringLiteral("for"), forVerb);// GUI 导入 = 自由导入形态（D6 形态 2，for 必带）
+    if (!modelRoot.isEmpty()) req.insert(QStringLiteral("root"), modelRoot);
+    runModelRequest(req, QStringLiteral("模型导入完成"));
 }
 
 bool FFExtractor::probeInfo(const QString& inPath, ProbeInfo* info, QString* err) {
@@ -324,9 +437,13 @@ void FFExtractor::runRequest(const QJsonObject& req, const QString& okMsg) {
                                 .value(QStringLiteral("output")).toString();
         emit jobDone(true, okMsg + QStringLiteral("：%1").arg(out));
     } else {
+        const QJsonObject error = resp.value(QStringLiteral("error")).toObject();
         // 失败文案直通 error.message：E_CANCELLED 的 message 即「已取消」，mainwidget 特判逐字命中
-        emit jobDone(false, resp.value(QStringLiteral("error")).toObject()
-                             .value(QStringLiteral("message")).toString());
+        emit jobDone(false, error.value(QStringLiteral("message")).toString());
+        // 结构化缺模型信号（FR-8 片 B，D8）：E_MODEL = 模型文件缺失/损坏（引擎 setup 失败同域），
+        // 除文案外加发可编程识别的引导钩子——不走文案前缀匹配（NFR-M1 片 B P3-1 教训）
+        if (error.value(QStringLiteral("code")).toString() == QLatin1String("E_MODEL"))
+            emit modelMissing();
     }
 }
 
@@ -344,11 +461,15 @@ void FFExtractor::doDenoiseWav(const QString& inPath, HumBase humBase, bool remo
 }
 
 void FFExtractor::doDenoiseAiWav(const QString& inPath) {
-    // GUI 壳保留 appDir 相对缺省解析与「找不到…」文案（缺省策略上移给壳，片 C D2）；
-    // 命令层 model 必填，槽内先解析路径再组 model 字段
-    const QString model = QCoreApplication::applicationDirPath() + "/" + kAiModelRelPath;
+    // GUI 壳缺省解析两级化（FR-8 片 B，D1）：模型库该用途已装 → appDir bundled；命令层 model
+    // 必填，槽内先解析路径再组 model 字段。两级皆缺时文案逐字不动（GUI-EQV 锁定，%1 仍显示
+    // appDir bundled 路径——随包分发是缺省安装形态，库路径此刻不存在），并加发 modelMissing
+    // 引导下载（D8 首次使用引导）
+    const QString bundled = QCoreApplication::applicationDirPath() + "/" + kAiModelRelPath;
+    const QString model = resolveDefaultModel(QStringLiteral("aiDenoise"), bundled);
     if (!QFileInfo::exists(model)) {
-        emit jobDone(false, QStringLiteral("找不到 AI 降噪模型：%1").arg(model));
+        emit jobDone(false, QStringLiteral("找不到 AI 降噪模型：%1").arg(bundled));
+        emit modelMissing();
         return;
     }
     QJsonObject req;
@@ -368,10 +489,12 @@ void FFExtractor::doPitchWav(const QString& inPath, double semiTones) {
 }
 
 void FFExtractor::doSepVocals(const QString& inPath, bool instrumental) {
-    // 同 doDenoiseAiWav：appDir 相对缺省解析 + GUI 文案留在壳，命令层拿显式 model
-    const QString model = QCoreApplication::applicationDirPath() + "/" + kSepModelRelPath;
+    // 同 doDenoiseAiWav：两级缺省解析（FR-8 片 B）+ GUI 文案留在壳（逐字不动），命令层拿显式 model
+    const QString bundled = QCoreApplication::applicationDirPath() + "/" + kSepModelRelPath;
+    const QString model = resolveDefaultModel(QStringLiteral("separate"), bundled);
     if (!QFileInfo::exists(model)) {
-        emit jobDone(false, QStringLiteral("找不到人声分离模型：%1").arg(model));
+        emit jobDone(false, QStringLiteral("找不到人声分离模型：%1").arg(bundled));
+        emit modelMissing();
         return;
     }
     QJsonObject req;

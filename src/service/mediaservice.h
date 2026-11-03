@@ -10,7 +10,10 @@ enum class HumBase;// hum 基频制式（定义在 dspdenoiser.h，信号参数�
 
 // 媒体服务：调度后台线程执行分离/降噪任务并转发进度。
 // FR-A4 片 B：工作区根经 setWorkspaceRoot 队列转发 worker（七对既有业务信号槽签名零改）；
-// 处理历史查询 wsInfo 与 probe 同型（只读不占 busy），大文件首查哈希在 worker 线程不冻 UI
+// 处理历史查询 wsInfo 与 probe 同型（只读不占 busy），大文件首查哈希在 worker 线程不冻 UI。
+// FR-8 片 B：模型族三对信号槽——modelList 只读不占 busy（wsInfo 先例）；modelDownload/
+// modelImport 占 busy + cancelFlag 透传 Ctx + 进度走既有 progress 信号（worker 线程内
+// downloadModel 的局部 QEventLoop 可正常 exec）；modelMissing 结构化信号原样转发（D8）
 class MediaService : public QObject
 {
     Q_OBJECT
@@ -34,13 +37,24 @@ signals:
     void sepVocalsRequested(const QString& inPath, bool instrumental);// 人声分离/伴奏提取任务请求
     void workspaceRootRequested(const QString& root);// 工作区根注入请求（FR-A4 片 B，队列转发 worker）
     void wsInfoRequested(const QString& input);// 处理历史查询请求（FR-A4 片 B，只读不占 busy）
+    void modelRootRequested(const QString& root);// 模型库根注入请求（FR-8 片 B，队列转发 worker）
+    void modelListRequested();// 模型列表查询请求（FR-8 片 B，只读不占 busy）
+    void modelDownloadRequested(const QString& id, const QString& endpoint);// 模型下载请求（FR-8 片 B，占 busy）
+    void modelImportRequested(const QString& path, const QString& forVerb);// 模型导入请求（FR-8 片 B，占 busy）
     void progress(int pct);// 任务进度百分比
     void jobFinished(bool ok, const QString& message);// 任务完成通知
     void probeFinished(bool ok, const QString& info);// 文件探测完成
     void wsInfoFinished(bool ok, const QString& json);// 处理历史查询完成（ok 时 json 为 result 的 Compact JSON）
+    void modelListFinished(bool ok, const QString& json);// 模型列表查询完成（ok 时 json 为 result 的 Compact JSON）
+    void modelOpFinished(bool ok, const QString& message);// 模型下载/导入完成（busy 据此释放；message 为壳重建文案或 error.message 直通）
+    void modelMissing();// 结构化缺模型信号（FR-8 片 B，worker 原样转发，D8 引导钩子）
 public slots:
     void setWorkspaceRoot(const QString& root);// 注入工作区根到 worker（GUI 线程读 QSettings 后调用，D7 边界）
+    void setModelRoot(const QString& root);// 注入模型库根到 worker（FR-8 片 B，承载边界同上）
     void wsInfo(const QString& input);// 提交处理历史查询（异步，结果走信号，probe 同型不占 busy）
+    void modelList();// 提交模型列表查询（异步，结果走信号，wsInfo 同型不占 busy）
+    void modelDownload(const QString& id, const QString& endpoint);// 提交模型下载（占 busy 可取消，进度走 progress）
+    void modelImport(const QString& path, const QString& forVerb);// 提交模型导入（自由导入带 for，占 busy 可取消）
     void probe(const QString& inPath);// 提交文件探测任务（异步，结果走信号）
     void extractAudio(const QString& inPath);// 提交音轨提取任务
     void extractVideo(const QString& inPath);// 提交无声视频提取任务

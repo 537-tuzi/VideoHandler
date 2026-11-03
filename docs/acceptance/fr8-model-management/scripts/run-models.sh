@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# run-models.sh — FR-8 模型管理验收编排（MDL 族，判据以 docs/acceptance/fr8-model-management/matrix.csv 为准）：
+# run-models.sh — FR-8 模型管理验收编排（MDL 族 + 片 B GML 族，判据以 docs/acceptance/fr8-model-management/matrix.csv 为准）：
 #   modelList 三视角合并 / modelDownload 幂等下载+sha256 校验 / Range 跨调用续传 / 失败注入负例 /
-#   modelImport 两形态 / 信封分叉零漂移 / 取消语义（探针直调，CLI 单发无取消通道）。
+#   modelImport 两形态 / 信封分叉零漂移 / 取消语义（探针直调，CLI 单发无取消通道）；
+#   GML 族（片 B）：两级缺省解析（engine 相槽直调）+ 对话框全链（gui 相 offscreen MainWidget 全链，
+#   --chunk-sleep-ms 节流服务拉长传输窗供 busy/取消断言）。
 # 全程本地 range_server.py（127.0.0.1），真网红线：不触外网。
 # 前置完整性闸（fr-a4 片 B 空洞 PASS 教训）：third_party 两模型必须存在且 sha/size 与内置目录表一致——
 # 目录表本身就是下载校验基准，fixture 坏 = 全部断言失真，故硬 FAIL 不降级。
@@ -264,8 +266,9 @@ nopart MDL-049p "$LIBX"
 jr MDL-050 1 "{\"v\":1,\"cmd\":\"modelDownload\",\"id\":\"uvr-mdx-voc-ft\",\"root\":\"$LIBX\",\"endpoint\":\"$(ep J)\"}" \
     ok=false code=E_NET 'msg-contains=HTTP 404' absent:result # HEAD 正常 GET 404：GET 段 HTTP 错误
 nopart MDL-050p "$LIBX"
-jr MDL-051 1 "{\"v\":1,\"cmd\":\"modelDownload\",\"id\":\"uvr-mdx-voc-ft\",\"endpoint\":\"ftp://x/y\"}" \
+jr MDL-051 1 "{\"v\":1,\"cmd\":\"modelDownload\",\"id\":\"uvr-mdx-voc-ft\",\"root\":\"$W/lib051\",\"endpoint\":\"ftp://x/y\"}" \
     ok=false code=E_PARAMS msg-contains=不是合法的 absent:result # endpoint 串类型对但 scheme 非 http(s)
+ex MDL-051d test ! -e "$W/lib051" # 参数拒绝零落盘副作用（测试轮 P3：修复前留空 <root>/separator/ 目录）
 # 已装库不受负例干扰（LIB 仍是 installed）
 jr MDL-052 0 "{\"v\":1,\"cmd\":\"modelList\",\"root\":\"$LIB\"}" \
     ok=true str:result.models.1.status=installed exists:result.models.1.path
@@ -397,6 +400,144 @@ if grep -q "^CODE E_CANCELLED$" "$W/cancel-mid.out" && grep -qE "^PART [0-9]+ " 
 jr MDL-092 0 "{\"v\":1,\"cmd\":\"modelDownload\",\"id\":\"uvr-mdx-voc-ft\",\"root\":\"$LIBC\",\"endpoint\":\"$(ep A)\"}" \
     ok=true str:result.sha256="$UVR_SHA" exists:result.path
 ex MDL-092g grep -qE "GET .*range=bytes=[0-9]+- status=206" "$W/log.A" # 取消→重跑续传闭环
+
+# 导入复制环中段取消（测试轮覆盖空白补面）：首个进度回调（复制环首块）置 cancel → 下一块间
+# 检查点 E_CANCELLED；.part 即删（本地重拷廉价）且库树零 .onnx 落位、清单不写
+LIBIC="$W/libic"; cp "$GTCRN" "$W/import-src.onnx"
+"$W/probe" import-cancel "$W/import-src.onnx" "$LIBIC" aiDenoise >"$W/import-cancel.out" 2>/dev/null
+if grep -q "^CODE E_CANCELLED$" "$W/import-cancel.out" && grep -q "^NOPART$" "$W/import-cancel.out" \
+    && grep -q "^NOONNX$" "$W/import-cancel.out"; then
+    echo "  PASS MDL-093（导入复制环取消：E_CANCELLED + .part 即删 + 零落位）"; else
+    echo "  FAIL MDL-093: $(cat "$W/import-cancel.out")"; FAIL=1; fi
+
+# =============================================================
+echo "== GML：FR-8 片 B GUI 面（两级缺省解析/结构化 modelMissing/对话框全链；探针 mdl-gui-probe） =="
+
+# 陈旧库闸（gui-ws.sh 同型）：GUI 探针链 libengine.a + 编译主窗/服务两 TU，先增量构建防假绿
+cmake --build "$BUILD" >/dev/null || { echo "FAIL: 增量构建失败（$BUILD）"; exit 1; }
+
+echo "== GML 探针编译（mdl-gui-probe：offscreen QApplication 驱动 MainWidget/MediaService 全链）=="
+# 主窗/服务不在 libengine.a（video_handler 目标），探针随带两 TU + 各自 moc（AUTOMOC 配方手工化）
+MOC=$(ls /usr/lib/qt6/libexec/moc 2>/dev/null || command -v moc)
+[ -n "$MOC" ] || { echo "FAIL: 缺 moc（qt6-base-dev-tools）"; exit 1; }
+"$MOC" src/service/mediaservice.h -o "$W/moc_mediaservice.cpp"
+"$MOC" src/view/mainwidget.h -o "$W/moc_mainwidget.cpp"
+PKGS_GUI="Qt6Core Qt6Network Qt6Widgets libavformat libavcodec libavutil libswresample soundtouch"
+g++ -std=c++20 -O2 "$S/mdl-gui-probe.cpp" src/view/mainwidget.cpp src/service/mediaservice.cpp \
+    "$W/moc_mediaservice.cpp" "$W/moc_mainwidget.cpp" -o "$W/gml-probe" -I"$(pwd)/src" \
+    $(pkg-config --cflags $PKGS_GUI) "$BUILD/libengine.a" \
+    $(pkg-config --libs $PKGS_GUI) "$(pwd)/third_party/ort/linux/lib/libonnxruntime.so" \
+    -Wl,-rpath,"$(pwd)/third_party/ort/linux/lib" \
+    || { echo "FAIL: GML 探针编译失败"; exit 1; }
+
+# 素材（5s 44.1k 立体声，gui-ws 同配方）+ appDir 布局（bundled 随相位可控）+ 库 fixture（CLI 预装）
+ENG="$W/eng"; mkdir -p "$ENG"
+ffmpeg -y -loglevel error -f lavfi -i "sine=frequency=440:sample_rate=44100:duration=5" -ac 2 -c:a pcm_s16le "$ENG/st.wav" \
+    || { echo "FAIL: GML 素材生成失败"; exit 1; }
+for d in eb-none eb-gtcrn eb-uvr guibin; do mkdir -p "$W/$d"; cp "$W/gml-probe" "$W/$d/probe"; done
+mkdir -p "$W/eb-gtcrn/models/denoiser" "$W/eb-uvr/models/separator"
+cp "$GTCRN" "$W/eb-gtcrn/models/denoiser/gtcrn_simple.onnx"
+cp "$UVR" "$W/eb-uvr/models/separator/UVR-MDX-NET-Voc_FT.onnx"
+LIBE1="$W/libe1"; LIBE2="$W/libe2"; LIBE0="$W/libe0" # libe0：不存在根（查询不建目录，恒无已装）
+printf '%s' "{\"v\":1,\"cmd\":\"modelImport\",\"path\":\"$IN/gtcrn-copy.onnx\",\"id\":\"gtcrn\",\"root\":\"$LIBE1\"}" | "$VH" --json >/dev/null
+[ -f "$LIBE1/denoiser/gtcrn_simple.onnx" ] || { echo "FAIL: GML 库 fixture（gtcrn）预装失败"; exit 1; }
+printf '%s' "{\"v\":1,\"cmd\":\"modelImport\",\"path\":\"$UVR\",\"id\":\"uvr-mdx-voc-ft\",\"root\":\"$LIBE2\"}" | "$VH" --json >/dev/null
+[ -f "$LIBE2/separator/UVR-MDX-NET-Voc_FT.onnx" ] || { echo "FAIL: GML 库 fixture（uvr）预装失败"; exit 1; }
+# 跨 id 遮蔽回归 fixture（审查轮 P1-1）：库内自由导入另一 aiDenoise 模型（非目录条目 id）
+LIBE3="$W/libe3"; cp "$GTCRN" "$W/my-gtcrn.onnx"
+printf '%s' "{\"v\":1,\"cmd\":\"modelImport\",\"path\":\"$W/my-gtcrn.onnx\",\"for\":\"aiDenoise\",\"root\":\"$LIBE3\"}" | "$VH" --json >/dev/null
+[ -f "$LIBE3/denoiser/my-gtcrn.onnx" ] || { echo "FAIL: GML 库 fixture（my-gtcrn 自由导入）预装失败"; exit 1; }
+
+# 整行/前缀断言器（探针输出协议行）
+line_is() { # <id> <文件> <完整期望行>：输出含该整行（固定串比对）
+    local id=$1 f=$2 want=$3
+    if grep -qxF "$want" "$f"; then echo "  PASS $id"; else
+        echo "  FAIL $id: 未见整行「$want」"; sed 's/^/    probe│ /' "$f"; FAIL=1; fi
+}
+has_pref() { # <id> <文件> <固定串前缀>：输出含该前缀（ok=1 文案带哈希段，锚定前缀即可）
+    local id=$1 f=$2 want=$3
+    if grep -qF "$want" "$f"; then echo "  PASS $id"; else
+        echo "  FAIL $id: 未见前缀「$want」"; sed 's/^/    probe│ /' "$f"; FAIL=1; fi
+}
+eng() { # <bin目录> <lib> <ws> <相位> <out>：跑 engine 相（槽直调，gui-ws-probe 同型）
+    QT_QPA_PLATFORM=offscreen "$1/probe" engine "$ENG/st.wav" "$2" "$3" "$4" >"$5" 2>"$5.err"
+}
+
+echo "== GML-E：两级缺省解析（D1：库已装 → appDir bundled）+ modelMissing 触发面（D8） =="
+
+eng "$W/eb-none" "$LIBE0" "$W/wse1" ai-missing "$W/gml-101.out"
+line_is GML-101 "$W/gml-101.out" "TASK ai-missing -> ok=0 msg=找不到 AI 降噪模型：$W/eb-none/models/denoiser/gtcrn_simple.onnx"
+line_is GML-101m "$W/gml-101.out" "MODELMISSING 1" # 两级皆缺：pre-check 路径发结构化信号（文案 %1 = bundled 路径，GUI-EQV 锁）
+line_is GML-101p "$W/gml-101.out" "MODELPATH -" # 失败无版本记录
+
+eng "$W/eb-none" "$LIBE1" "$W/wse2" ai-libonly "$W/gml-102.out"
+has_pref GML-102 "$W/gml-102.out" "TASK ai-libonly -> ok=1 msg=AI 降噪完成：$W/wse2/"
+line_is GML-102p "$W/gml-102.out" "MODELPATH $LIBE1/denoiser/gtcrn_simple.onnx" # 真值 = 版本记录 model.path
+line_is GML-102m "$W/gml-102.out" "MODELMISSING 0"
+
+eng "$W/eb-gtcrn" "$LIBE1" "$W/wse3" ai-libbundled "$W/gml-103.out"
+line_is GML-103 "$W/gml-103.out" "MODELPATH $LIBE1/denoiser/gtcrn_simple.onnx" # 库优先于随包（两级都在取库）
+
+eng "$W/eb-gtcrn" "$LIBE3" "$W/wse3b" ai-importshadow "$W/gml-103b.out"
+has_pref GML-103bt "$W/gml-103b.out" "TASK ai-importshadow -> ok=1" # 任务成功（用的是导入模型而非随包）
+line_is GML-103b "$W/gml-103b.out" "MODELPATH $LIBE3/denoiser/my-gtcrn.onnx" # 跨 id 遮蔽回归（审查 P1-1）：随包在位不得压过库内导入条目（修复前取随包路径）
+
+eng "$W/eb-gtcrn" "$LIBE0" "$W/wse4" ai-bundledonly "$W/gml-104.out"
+line_is GML-104 "$W/gml-104.out" "MODELPATH $W/eb-gtcrn/models/denoiser/gtcrn_simple.onnx" # 库无已装 → 随包兜底
+
+eng "$W/eb-gtcrn" "$LIBE1" "$W/wse5" ai-noroot "$W/gml-105.out"
+line_is GML-105 "$W/gml-105.out" "MODELPATH $W/eb-gtcrn/models/denoiser/gtcrn_simple.onnx" # 根未注入不查库（库在盘有 gtcrn 仍取随包 = 零漂移）
+
+eng "$W/eb-uvr" "$LIBE2" "$W/wse6" sep-lib "$W/gml-106.out"
+has_pref GML-106 "$W/gml-106.out" "TASK sep-lib -> ok=1 msg=人声分离完成：$W/wse6/"
+line_is GML-106p "$W/gml-106.out" "MODELPATH $LIBE2/separator/UVR-MDX-NET-Voc_FT.onnx" # separator 槽同型两级解析
+
+eng "$W/eb-none" "$LIBE0" "$W/wse7" sep-missing "$W/gml-107.out"
+line_is GML-107 "$W/gml-107.out" "TASK sep-missing -> ok=0 msg=找不到人声分离模型：$W/eb-none/models/separator/UVR-MDX-NET-Voc_FT.onnx"
+line_is GML-107m "$W/gml-107.out" "MODELMISSING 1"
+
+# 负例守卫（审查 P3-3a）：模型在位 + 输入缺失 → E_FILE 任务失败，结构化信号不得误发
+# （wav 参数故意不存在，故不走 eng() 的固定素材路径）
+QT_QPA_PLATFORM=offscreen "$W/eb-gtcrn/probe" engine "$W/nonexistent.wav" "$LIBE0" "$W/wse8" ai-badinput >"$W/gml-101n.out" 2>"$W/gml-101n.err"
+ex GML-101n grep -qF "TASK ai-badinput -> ok=0" "$W/gml-101n.out"
+line_is GML-101nm "$W/gml-101n.out" "MODELMISSING 0"
+
+echo "== GML-G：对话框全链（offscreen；XDG_CONFIG_HOME 隔离 QSettings；节流服务拉长传输窗） =="
+
+start_srv SLOW "$SRVROOT" --chunk-sleep-ms 8 # 1019 chunk × 8ms ≈ 8s：busy/取消断言免竞态
+LIBG="$W/libg"; WSG="$W/wsg"; mkdir -p "$WSG"
+XDG_CONFIG_HOME="$W/config" QT_QPA_PLATFORM=offscreen "$W/guibin/probe" gui \
+    "$ENG/st.wav" "$(ep SLOW)" "$LIBG" "$WSG" "$IN/my-gtcrn.onnx" >"$W/gml-gui.out" 2>"$W/gml-gui.err"
+# offscreen 平台自身对窗口操作（raise/尺寸协商）有固定噪声输出，非应用错误——滤后须为空
+grep -vE "This plugin does not support (propagateSizeHints|raise)\(\)" "$W/gml-gui.err" >"$W/gml-gui.err2" || true
+if [ -s "$W/gml-gui.err2" ]; then echo "  FAIL GML-G stderr 非空（滤平台噪声后）"; sed 's/^/    stderr│ /' "$W/gml-gui.err2"; FAIL=1; fi
+
+line_is GML-110 "$W/gml-gui.out" "EPDEFAULT https://huggingface.co" # D4 缺省源
+line_is GML-110n "$W/gml-gui.out" "MIRRORNOTE 注：镜像前缀仅对 HuggingFace 源条目生效；GitHub 直连条目不受镜像影响。" # D4 镜像适用性 UI 注记锁字（审查 P1-2）
+line_is GML-110r "$W/gml-gui.out" "ROOTLBL 模型库：$LIBG" # 库根 QSettings 读路径（构造期）
+line_is GML-110t "$W/gml-gui.out" "ROW0 gtcrn 可下载" # 列表渲染 + 状态中文映射
+line_is GML-110c "$W/gml-gui.out" "DLGCLOSE 1" # 非模态可关闭复开
+line_is GML-111 "$W/gml-gui.out" "DLBUSY 1" # 下载占 busy：操作键锁/取消键开/进度条显
+line_is GML-112 "$W/gml-gui.out" "LISTDURINGBUSY 1" # modelList 只读不占 busy（下载中查询回传）
+line_is GML-113 "$W/gml-gui.out" "CANCELMSG 已取消" # 取消文案直通（onModelOpDone 特判命中）
+line_is GML-113p "$W/gml-gui.out" "CANCELPART 1" # OQ-6：取消保留 .part
+line_is GML-113u "$W/gml-gui.out" "UNBUSY 1" # 完成放锁
+ex GML-114e grep -qE '^EQMSG .+' "$W/gml-gui.out" # E_MODEL 任务文案非空（jobFinished ok=0 载荷）
+line_is GML-114 "$W/gml-gui.out" "MISSINGQ 1" # 问询框出现且答 Yes（结构化信号→引导链）
+line_is GML-114d "$W/gml-gui.out" "DLGOPEN 1" # Yes → 打开模型管理
+line_is GML-115 "$W/gml-gui.out" "DLOKMSG 模型下载完成：$LIBG/separator/UVR-MDX-NET-Voc_FT.onnx"
+line_is GML-115s "$W/gml-gui.out" "DLOK 1" # 续传闭环完成 + 列表翻「已安装」+ 无 .part
+line_is GML-115r "$W/gml-gui.out" "SELRESTORED uvr-mdx-voc-ft" # 完成刷新后选中按 id 恢复（测试轮 D1；修复前恒回首行）
+sha_is GML-115f "$LIBG/separator/UVR-MDX-NET-Voc_FT.onnx" "$UVR_SHA" # 对话框路径下载产物 = 目录表基准
+line_is GML-116 "$W/gml-gui.out" "NOTICE 请确认您有权使用该模型（来源与许可证由您自行核验）" # §161 逐字
+line_is GML-116i "$W/gml-gui.out" "IMPORTOK 1" # 导入全链（选文件→用途→提交）
+line_is GML-116r "$W/gml-gui.out" "IMPORTROW 1" # 列表新增 my-gtcrn 已安装
+sha_is GML-116f "$LIBG/denoiser/my-gtcrn.onnx" "$GTCRN_SHA" # 导入落位产物 = 源字节
+line_is GML-116g "$W/gml-gui.out" "IMPORTPROG 100" # 导入进度真值：复制段 0–99 + 登记成功收尾 100（审查 P2-3）
+line_is GML-117 "$W/gml-gui.out" "EPSAVED https://hf-mirror.com" # endpoint QSettings 记忆（D4）
+line_is GML-118 "$W/gml-gui.out" "ROOTCHANGED 1" # 换根全链（目录对话框→标签/下传/刷新）
+line_is GML-118s "$W/gml-gui.out" "ROOTSAVED $LIBG-changed" # 库根 QSettings 写路径
+nopart GML-119 "$LIBG" # GUI 相终态：库树无 .part 残留
 
 # =============================================================
 echo "== 完整性终闸（fixture 与 third_party 未被改动；红线：不动 third_party/） =="

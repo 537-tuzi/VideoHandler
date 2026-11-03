@@ -12,6 +12,8 @@ Range: bytes=N-」的 ground truth（客户端只看结果文件无法区分续�
                      收到 premature close，连接级错误）
   --cutall           GET 只发响应头不发任何字节即掐断
   --no206            无视 Range 头恒回 200 全量（服务器不支持 Range 的兼容路径）
+  --chunk-sleep-ms N 每发一个 chunk 睡 N 毫秒（节流：把小文件下载拉慢到秒级，供 GUI 验收
+                     在传输期内做 busy/取消断言，避免竞态；0 = 不睡）
   --etag HEX         覆盖 ETag（字面 hex，不含引号）；缺省 = 所服务文件的 sha256（对齐 HF
                      LFS/Xet 契约：权重文件 ETag 即 sha256）；传 none 则不发 ETag 头
 
@@ -28,6 +30,7 @@ import hashlib
 import os
 import socket
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 CHUNK = 1 << 16
@@ -154,6 +157,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(chunk)
                 sent += len(chunk)
                 remaining -= len(chunk)
+                if srv.chunk_sleep_ms:  # 节流开关：慢化传输供 busy/取消类断言（见 docstring）
+                    time.sleep(srv.chunk_sleep_ms / 1000.0)
 
     def do_HEAD(self):
         self._respond(send_body=False)
@@ -172,6 +177,8 @@ def main():
     ap.add_argument("--cutmid", type=int, metavar="N", help="GET 发 N 字节后掐断连接")
     ap.add_argument("--cutall", action="store_true", help="GET 只发响应头即掐断")
     ap.add_argument("--no206", action="store_true", help="无视 Range 恒回 200 全量")
+    ap.add_argument("--chunk-sleep-ms", type=int, default=0, metavar="N",
+                    help="每发一个 chunk 睡 N 毫秒（节流供 GUI busy/取消断言；0 = 不睡）")
     ap.add_argument("--etag", help="覆盖 ETag（hex 字面值）；none = 不发 ETag 头；缺省 = 文件 sha256")
     ap.add_argument("--log", help="请求日志文件（缺省 stderr）")
     args = ap.parse_args()
@@ -189,6 +196,7 @@ def main():
     httpd.cutmid = args.cutmid
     httpd.cutall = args.cutall
     httpd.no206 = args.no206
+    httpd.chunk_sleep_ms = args.chunk_sleep_ms
     httpd.etag = args.etag if args.etag and args.etag != "none" else None
     httpd.suppress_etag = args.etag == "none"
     httpd.etag_cache = {}

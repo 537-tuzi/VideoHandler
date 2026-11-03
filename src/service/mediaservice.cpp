@@ -34,6 +34,10 @@ void MediaService::init_connect() {
     connect(this, &MediaService::sepVocalsRequested, worker, &FFExtractor::doSepVocals);
     connect(this, &MediaService::workspaceRootRequested, worker, &FFExtractor::setWorkspaceRoot);// FR-A4 片 B：根注入（装配期 setCancelFlag 同型，队列投递到 worker 线程）
     connect(this, &MediaService::wsInfoRequested, worker, &FFExtractor::doWsInfo);// 处理历史查询（probe 同型）
+    connect(this, &MediaService::modelRootRequested, worker, &FFExtractor::setModelRoot);// FR-8 片 B：模型库根注入（setWorkspaceRoot 同型）
+    connect(this, &MediaService::modelListRequested, worker, &FFExtractor::doModelList);// 模型列表查询（wsInfo 同型只读不占 busy）
+    connect(this, &MediaService::modelDownloadRequested, worker, &FFExtractor::doModelDownload);// 模型下载（占 busy，取消/进度经 Ctx）
+    connect(this, &MediaService::modelImportRequested, worker, &FFExtractor::doModelImport);// 模型导入（占 busy）
     connect(worker, &FFExtractor::progress, this, &MediaService::progress);
     connect(worker, &FFExtractor::jobDone, this, [this](bool ok, const QString& message) {
         busy = false;
@@ -42,6 +46,13 @@ void MediaService::init_connect() {
     });
     connect(worker, &FFExtractor::probeDone, this, &MediaService::probeFinished);
     connect(worker, &FFExtractor::wsInfoDone, this, &MediaService::wsInfoFinished);
+    connect(worker, &FFExtractor::modelListDone, this, &MediaService::modelListFinished);
+    connect(worker, &FFExtractor::modelOpDone, this, [this](bool ok, const QString& message) {
+        busy = false;// 模型下载/导入与七槽任务共用一把 busy 锁（一次一任务语义涵盖模型操作）
+        cancelFlag = false;
+        emit modelOpFinished(ok, message);
+    });
+    connect(worker, &FFExtractor::modelMissing, this, &MediaService::modelMissing);// 结构化引导信号原样转发（D8）
 }
 
 void MediaService::cancelJob() {
@@ -52,8 +63,30 @@ void MediaService::setWorkspaceRoot(const QString& root) {
     emit workspaceRootRequested(root);// 排队进后台线程（worker 据此给任务请求组 workspace 键）
 }
 
+void MediaService::setModelRoot(const QString& root) {
+    emit modelRootRequested(root);// 排队进后台线程（worker 据此做两级缺省解析与模型族请求组 root 键）
+}
+
 void MediaService::wsInfo(const QString& input) {
     emit wsInfoRequested(input);// 只读查询排队进后台线程，不占 busy（首查大文件哈希数秒不冻 UI）
+}
+
+void MediaService::modelList() {
+    emit modelListRequested();// 只读查询排队进后台线程，不占 busy（wsInfo 先例：下载中也可刷新列表）
+}
+
+void MediaService::modelDownload(const QString& id, const QString& endpoint) {
+    if (busy) return;
+    busy = true;// 长任务占 busy（D5）：任务期间七槽与第二个模型操作均被锁
+    cancelFlag = false;
+    emit modelDownloadRequested(id, endpoint);// 队列投递到后台线程
+}
+
+void MediaService::modelImport(const QString& path, const QString& forVerb) {
+    if (busy) return;
+    busy = true;
+    cancelFlag = false;
+    emit modelImportRequested(path, forVerb);// 队列投递到后台线程
 }
 
 void MediaService::probe(const QString& inPath) {
