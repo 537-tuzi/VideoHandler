@@ -18,7 +18,7 @@
   换正常服重跑 `GET ... range=bytes=600000- status=206` → sha256 与目录表一致 → 落位登记。
 - MDL-021/023 幂等：服务日志行数前后不变（零网络请求）。
 - MDL-044 .part 语义反面：内容坏 → 「下载内容 sha256 不符……已删临时文件」+ 无 .part 残留。
-- MDL-090/092 取消闭环：cancel-pre 零请求；cancel-mid `.part`=112128B 保留；CLI 重跑 Range 续传收尾。
+- MDL-090/092 取消闭环：cancel-pre 零请求；cancel-mid `.part`≈112KB（取消点时序浮动，测试轮复测 113152B）保留；CLI 重跑 Range 续传收尾。
 
 ## 门禁
 

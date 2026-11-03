@@ -481,8 +481,13 @@ QJsonObject downloadModel(const QString& id, const QString& root, const QString&
         const QJsonObject reg = findEntry(manifest, id);
         bool verified = false;
         if (reg.value(QStringLiteral("path")).toString() == dest
-            && reg.value(QStringLiteral("sha256")).toString() == e->sha256) {
-            verified = true;// 下载/导入时已全量校验并登记（清单即校验记录），免重读大文件
+            && reg.value(QStringLiteral("sha256")).toString() == e->sha256
+            && static_cast<qint64>(reg.value(QStringLiteral("sizeBytes")).toDouble())
+                   == QFileInfo(dest).size()) {
+            verified = true;// 下载/导入时已全量校验并登记（清单即校验记录），免重读大文件；
+            // size 与登记一致才信（与 D1 bundled「存在+size」同精度）：登记后文件被截断/替换
+            // 不再命中 → 落 else 现算指纹 → 不符重下治愈（测试 F-2：否则 D8 引导重下恒 ok 死循环）。
+            // 等长翻字节仍过——与 bundled 同边界，恶意/罕见损坏交给引擎 setup E_MODEL 兜底。
         } else {
             QString got;// 无登记（用户手放库内）：现算一次指纹，符合即收编登记
             if (!streamSha256(dest, &got, err)) return {};

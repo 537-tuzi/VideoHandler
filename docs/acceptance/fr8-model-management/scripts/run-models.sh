@@ -97,7 +97,7 @@ start_srv() { # <id> <root> [注入开关...]
 }
 cleanup() {
     for id in "${!SRV_PID[@]}"; do kill "${SRV_PID[$id]}" 2>/dev/null; done
-    [ "${VH_KEEP:-}" = 1 ] || rm -rf "$W"# VH_KEEP=1 保现场（MDL-092 间歇失败追因用）
+    [ "${VH_KEEP:-}" = 1 ] || rm -rf "$W" # VH_KEEP=1 保现场（MDL-092 间歇失败追因用；# 前必须空格）
 }
 trap cleanup EXIT
 
@@ -216,6 +216,17 @@ jr MDL-031 0 "{\"v\":1,\"cmd\":\"modelDownload\",\"id\":\"uvr-mdx-voc-ft\",\"roo
 sha_is MDL-031s "$LIBR/separator/UVR-MDX-NET-Voc_FT.onnx" "$UVR_SHA"
 nopart MDL-031p "$LIBR"
 ex MDL-031g grep -qE "GET .*range=bytes=[0-9]+- status=206" "$W/log.A" # 跨调用续传：Range 头由服务端日志实锤
+
+# 登记后产物截断（损坏常见形态）→ 幂等命中须失配 → 重下治愈（测试轮 F-2：否则响应 sha=目录
+# 指纹与 sizeBytes=盘上实值自相矛盾，且 D8 引导重下恒 ok 死循环）。等长翻字节为已知边界（与
+# D1 bundled「存在+size」同精度，引擎 setup E_MODEL 兜底），记档 goal.md 不设用例。
+truncate -s -1000 "$LIB/separator/UVR-MDX-NET-Voc_FT.onnx"
+N0=$(logn "$W/log.A")
+jr MDL-024t 0 "{\"v\":1,\"cmd\":\"modelDownload\",\"id\":\"uvr-mdx-voc-ft\",\"root\":\"$LIB\",\"endpoint\":\"$(ep A)\"}" \
+    ok=true str:result.sha256="$UVR_SHA"
+N1=$(logn "$W/log.A")
+ex MDL-024tn test "$N1" -gt "$N0" # 走了网络（重下，非幂等零请求命中）
+sha_is MDL-024ts "$LIB/separator/UVR-MDX-NET-Voc_FT.onnx" "$UVR_SHA" # 盘上治愈（长度还原 66762490）
 
 mkdir -p "$LIBN/separator"; printf 'corrupt-part-prefix-garbage' >"$LIBN/separator/UVR-MDX-NET-Voc_FT.onnx.part"
 jr MDL-032 0 "{\"v\":1,\"cmd\":\"modelDownload\",\"id\":\"uvr-mdx-voc-ft\",\"root\":\"$LIBN\",\"endpoint\":\"$(ep I)\"}" \

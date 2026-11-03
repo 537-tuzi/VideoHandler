@@ -13,6 +13,7 @@ MDL-020m,PASS,models.json 登记 source=download
 MDL-020j,PASS,models.json 登记 sha256 与目录表一致
 MDL-021,PASS,幂等重跑：ok 返回现路径
 MDL-021z,PASS,幂等重跑零网络请求（服务日志行数不变）
+MDL-024t,PASS,登记后产物截断 → 幂等失配重下治愈（日志增长+盘上 sha 还原；测试轮 F-2，tn/ts 为其子断言）
 MDL-023,PASS,清单丢失但产物在位：现算指纹收编仍零网络
 MDL-023m,PASS,收编登记 source=local
 MDL-023z,PASS,收编幂等：日志零新增网络请求（补记 round-1 已跑用例，脚本 :189）
