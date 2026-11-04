@@ -77,6 +77,7 @@
 | `transcode` | `input*`, `output` | | 源目录规则 | 直通转码 WAV(f32)，输出跟随源 |
 | `denoise` | `input*`, `output`, `humBase`, `wind` | `"50"\|"60"\|"off"`；bool | `"50"`；`true` | DSP 降噪；`humBase:"off"` 且 `wind:false` → E_PARAMS（与 GUI 拒绝逻辑一致，`mainwidget.cpp:172-175`） |
 | `aiDenoise` | `input*`, `output`, `model*` | string | **必填** | GTCRN；输出锁兜底 44.1k/2ch（模型工作点，P0 #4 有意保留） |
+| `aiDenoiseHq` | `input*`, `output`, `model*` | string（目录） | **必填** | FR-4 质量档 DeepFilterNet3（模型=目录：config.ini+3 onnx）；工作点 48k/1ch、**输出跟随源**（`lockCanonicalOutput=false`，AI 引擎首个）；后缀 `_aihq`；引擎表条目自动入 pipeline/batch |
 | `pitch` | `input*`, `output`, `semi*` | number ∈ [-12.0, 12.0] 且 ≠0 | — | SoundTouch 变调；范围对齐 GUI（`mainwidget.cpp:53`）；0 拒绝对齐 GUI（`mainwidget.cpp:193-195`）——比旧 CLI **收紧**（旧 CLI 任意 double 都收），有意为之 |
 | `separate` | `input*`, `output`, `model*`, `stem` | `"vocals"\|"instrumental"` | `"vocals"` | MDX 分离；输出锁兜底规格同上 |
 | `extractAudio` | `input*`, `output` | | 源目录规则 | 流复制抽音轨（输出后缀规则不变，`ffextractor.cpp:176`） |

@@ -13,6 +13,11 @@
                             拦截 write_audio 抓模型原始输出；同时旁路前置 normalize（peak>0.9
                             工作点偏移非引擎差异）并把 ×peak 增益除回引擎域，每次产
                             mdx-voc / mdx-inst 两金样本（round-3 判据）
+  dfn3 <素材名...>          FR-4（PAR-DF）：官方 deep-filter CLI v0.5.1 musl 预编译（third_party/
+                            tools，fetch-deps 备齐）逐文件产 48k/1ch 金样本；一文件一进程（CLI
+                            不重置跨文件状态，fr4 round-1 实锤）
+  dfn3min10 <素材名...>     同上 + --min-db-thresh 10（round-8 PAR-DF-004 零掩码门控护栏：
+                            抬门强制触发零掩码帧，引擎侧同语义改模型目录副本 config.ini）
 已存在且哈希与 fixtures.json 登记一致的金样本默认复用（--force 强制重生成——换参考
 实现版本后用，重生成后新哈希自动登记）。
 用法：gen_golden.py <子命令> <素材名...> [--check|--force]；素材须先由 gen_inputs.py 生成。
@@ -173,6 +178,34 @@ def do_mdx(names):
         spec_utils.normalize = orig_norm
 
 
+def do_dfn3(names, extra_args=(), suffix='df'):
+    """FR-4（PAR-DF）：官方 deep-filter CLI（Releases v0.5.1 musl 预编译，fetch-deps 备齐）产金样本。
+
+    ⚠ 一文件一进程：CLI 循环内不重置模型状态（libDF 滚动缓冲/归一化状态跨文件携带），
+    多文件同次调用会让后续文件金样本吃到前一文件的尾巴（fr4 round-1 实锤）。
+    输出 wav → ffmpeg 解 f32le（48k/1ch）对齐 DUT 裸流域；CLI 短尾帧 break 零填 = 引擎同约定。
+    dfn3min10 变体（round-8 PAR-DF-004）：extra_args=['--min-db-thresh','10'] 抬门强制触发
+    零掩码帧——引擎侧同语义 = 模型目录副本 config.ini lsnr_min=10（run_parity.sh 现配）。
+    """
+    import subprocess
+    import tempfile
+    repo = Path(__file__).resolve().parents[4]
+    dfcli = repo / 'third_party' / 'tools' / 'deep-filter'
+    tar = repo / 'third_party' / 'models' / 'denoiser' / 'DeepFilterNet3_onnx.tar.gz'
+    assert dfcli.is_file() and tar.is_file(), '缺 deep-filter CLI / DFN3 tar（先跑 fetch-deps.sh）'
+    for name in names:
+        if golden_ok(name, suffix):
+            print(f'{name}.{suffix}.golden.f32: 复用（哈希与登记一致）')
+            continue
+        with tempfile.TemporaryDirectory() as td:
+            subprocess.run([str(dfcli), '-m', str(tar), '-o', td, *extra_args, str(OUT / f'{name}.wav')],
+                           check=True, capture_output=True)
+            f32 = Path(td) / 'g.f32'
+            subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-i', str(Path(td) / f'{name}.wav'),
+                            '-f', 'f32le', '-ar', '48000', '-ac', '1', str(f32)], check=True)
+            save_golden(name, suffix, np.fromfile(f32, dtype='<f4'))
+
+
 def main():
     args = [a for a in sys.argv[1:] if a not in ('--check', '--force')]
     check = '--check' in sys.argv
@@ -184,7 +217,9 @@ def main():
     if check:
         print(f'CHECK OK: {cmd} × {names}')
         return
-    {'dsp': do_dsp, 'gtcrn': do_gtcrn, 'mdx': do_mdx}[cmd](names)
+    {'dsp': do_dsp, 'gtcrn': do_gtcrn, 'mdx': do_mdx, 'dfn3': do_dfn3,
+     'dfn3min10': lambda names: do_dfn3(names, extra_args=['--min-db-thresh', '10'],
+                                        suffix='dfmin10')}[cmd](names)
 
 
 if __name__ == '__main__':

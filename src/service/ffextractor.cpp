@@ -464,24 +464,30 @@ void FFExtractor::doDenoiseWav(const QString& inPath, HumBase humBase, bool remo
     runRequest(req, QStringLiteral("降噪完成"));
 }
 
-void FFExtractor::doDenoiseAiWav(const QString& inPath) {
+void FFExtractor::doDenoiseAiWav(const QString& inPath, bool quality) {
     // GUI 壳缺省解析两级化（FR-8 片 B，D1）：模型库该用途已装 → appDir bundled；命令层 model
     // 必填，槽内先解析路径再组 model 字段。两级皆缺时文案逐字不动（GUI-EQV 锁定，%1 仍显示
     // appDir bundled 路径——随包分发是缺省安装形态，库路径此刻不存在），并加发 modelMissing
-    // 引导下载（D8 首次使用引导）
-    const QString bundled = QCoreApplication::applicationDirPath() + "/" + kAiModelRelPath;
-    const QString model = resolveDefaultModel(QStringLiteral("aiDenoise"), bundled);
+    // 引导下载（D8 首次使用引导）。FR-4 质量档：动词 aiDenoiseHq、bundled = dfn3 目录
+    //（kDfn3ModelRelPath）、缺模型文案为独立新键（MIST 族锁定，旧键不动）
+    const QString verb = quality ? QStringLiteral("aiDenoiseHq") : QStringLiteral("aiDenoise");
+    const QString bundled = QCoreApplication::applicationDirPath() + "/"
+                            + QString::fromLatin1(quality ? kDfn3ModelRelPath : kAiModelRelPath);
+    const QString model = resolveDefaultModel(verb, bundled);
     if (!QFileInfo::exists(model)) {
-        emit jobDone(false, QStringLiteral("找不到 AI 降噪模型：%1").arg(bundled));
-        emit modelMissing(QStringLiteral("aiDenoise"));
+        emit jobDone(false, quality
+                                ? QStringLiteral("找不到 AI 降噪（质量档）模型：%1").arg(bundled)
+                                : QStringLiteral("找不到 AI 降噪模型：%1").arg(bundled));
+        emit modelMissing(verb);
         return;
     }
     QJsonObject req;
-    req.insert(QStringLiteral("cmd"), QStringLiteral("aiDenoise"));
+    req.insert(QStringLiteral("cmd"), verb);
     req.insert(QStringLiteral("input"), inPath);
     req.insert(QStringLiteral("model"), model);
-    // GTCRN 工作点锁 16k 单声道，输出锁兜底规格 44.1k 立体声——命令层 lockCanonical 承担（spec §2 有意保留）
-    runRequest(req, QStringLiteral("AI 降噪完成"));
+    // 快速档工作点锁 16k 单声道、输出锁兜底规格（lockCanonical）；质量档 48k 单声道但输出跟随源
+    //（NFR-Q3 首个 AI 引擎，注册表 lockCanonicalOutput=false）——均由命令层承担
+    runRequest(req, quality ? QStringLiteral("AI 降噪（质量档）完成") : QStringLiteral("AI 降噪完成"));
 }
 
 void FFExtractor::doPitchWav(const QString& inPath, double semiTones) {
@@ -538,6 +544,9 @@ bool FFExtractor::resolveStepModels(QJsonArray* steps, QString* missingVerb, QSt
         if (verb == QLatin1String("aiDenoise")) {
             rel = kAiModelRelPath;
             disp = QStringLiteral("AI 降噪");
+        } else if (verb == QLatin1String("aiDenoiseHq")) {// FR-4 质量档：bundled = dfn3 目录
+            rel = kDfn3ModelRelPath;
+            disp = QStringLiteral("AI 降噪（质量档）");
         } else if (verb == QLatin1String("separate")) {
             rel = kSepModelRelPath;
             disp = QStringLiteral("人声分离");

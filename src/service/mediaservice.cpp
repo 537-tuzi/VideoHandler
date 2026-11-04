@@ -114,11 +114,11 @@ void MediaService::extractVideo(const QString& inPath) {
     emit videoRequested(inPath);// 队列投递到后台线程
 }
 
-void MediaService::denoiseAiWav(const QString& inPath) {
+void MediaService::denoiseAiWav(const QString& inPath, bool quality) {
     if (busy) return;
     busy = true;
     cancelFlag = false;
-    emit aiDenoiseRequested(inPath);// 队列投递到后台线程
+    emit aiDenoiseRequested(inPath, quality);// 队列投递到后台线程
 }
 
 void MediaService::pitchWav(const QString& inPath, double semiTones) {

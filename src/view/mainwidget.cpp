@@ -68,7 +68,7 @@ MainWidget::MainWidget(QWidget* parent)
       btnOpen(nullptr), btnAudio(nullptr), btnVideo(nullptr),
       btnDenoise(nullptr), btnAi(nullptr), btnPitch(nullptr), btnSep(nullptr), btnInstrumental(nullptr), btnCancel(nullptr),
       btnWsChange(nullptr), btnHistory(nullptr), btnModels(nullptr),
-      chkHum(nullptr), cmbHumBase(nullptr), chkWind(nullptr), spinSemi(nullptr),
+      chkHum(nullptr), cmbHumBase(nullptr), chkWind(nullptr), cmbAiTier(nullptr), spinSemi(nullptr),
       cmbPipeline(nullptr), btnPipeline(nullptr), btnBatch(nullptr),
       lblFile(nullptr), lblWs(nullptr), lblStatus(nullptr), txtInfo(nullptr), bar(nullptr),
       modelDlg(nullptr), modelTree(nullptr), modelBar(nullptr),
@@ -103,6 +103,13 @@ void MainWidget::build_ui() {
     chkWind->setObjectName(QStringLiteral("chkWind"));
     chkHum->setChecked(true);
     chkWind->setChecked(true);
+    cmbAiTier = new QComboBox(this);// AI 降噪档位（FR-4）：快速 = GTCRN（现状引擎）/质量 = DeepFilterNet3
+    cmbAiTier->setObjectName(QStringLiteral("cmbAiTier"));
+    cmbAiTier->addItem(QStringLiteral("快速（GTCRN）"));
+    cmbAiTier->addItem(QStringLiteral("质量（DeepFilterNet3）"));
+    cmbAiTier->setCurrentIndex(QSettings().value(QString::fromUtf8(kSettingsAiTier),
+                                                 QStringLiteral("fast")).toString()
+                                       == QLatin1String("quality") ? 1 : 0);// 记住上次选择，缺省快速档
     spinSemi = new QDoubleSpinBox(this);
     spinSemi->setObjectName(QStringLiteral("spinSemi"));
     spinSemi->setRange(-12.0, 12.0);
@@ -169,6 +176,7 @@ void MainWidget::build_ui() {
     denRow->addWidget(cmbHumBase);
     denRow->addWidget(chkWind);
     denRow->addWidget(btnDenoise);
+    denRow->addWidget(cmbAiTier);
     denRow->addWidget(btnAi);
     auto* pitchRow = new QHBoxLayout;
     pitchRow->addWidget(spinSemi);
@@ -212,6 +220,10 @@ void MainWidget::init_connect() {
     connect(chkHum, &QCheckBox::toggled, cmbHumBase, &QComboBox::setEnabled);// 不除电流声时制式选择无效
     connect(cmbHumBase, &QComboBox::currentIndexChanged, this, [this](int idx) {
         QSettings().setValue(QStringLiteral("humBaseHz"), idx == 1 ? 60 : 50);// 换制式即记住，下次启动还原
+    });
+    connect(cmbAiTier, &QComboBox::currentIndexChanged, this, [this](int idx) {
+        QSettings().setValue(QString::fromUtf8(kSettingsAiTier),// FR-4：换档即记住，下次启动还原
+                             idx == 1 ? QStringLiteral("quality") : QStringLiteral("fast"));
     });
 }
 
@@ -486,8 +498,9 @@ void MainWidget::doModelDownloadFromDialog() {
 
 void MainWidget::doModelImportFromDialog() {
     if (!media) return;
+    // FR-4：目录型模型（质量档）导入物 = tar.gz 压缩包，过滤器随收（单文件 onnx 仍主流形态）
     const QString path = QFileDialog::getOpenFileName(modelDlg, QStringLiteral("选择模型文件"), QString(),
-        QStringLiteral("ONNX 模型 (*.onnx);;所有文件 (*)"));
+        QStringLiteral("模型文件 (*.onnx *.tar.gz *.tgz);;所有文件 (*)"));
     if (path.isEmpty()) return;
     submitModelImport(path);
 }
@@ -502,6 +515,7 @@ void MainWidget::submitModelImport(const QString& path) {
     auto* combo = new QComboBox(&dlg);
     combo->setObjectName(QStringLiteral("modelImportCombo"));
     combo->addItem(QStringLiteral("AI 降噪"), QStringLiteral("aiDenoise"));
+    combo->addItem(QStringLiteral("AI 降噪（质量档）"), QStringLiteral("aiDenoiseHq"));// FR-4：tar.gz 试开导入
     combo->addItem(QStringLiteral("人声分离"), QStringLiteral("separate"));
     auto* notice = new QLabel(QStringLiteral("请确认您有权使用该模型（来源与许可证由您自行核验）"), &dlg);
     notice->setObjectName(QStringLiteral("modelImportNotice"));
@@ -544,6 +558,7 @@ void MainWidget::onModelListDone(bool ok, const QString& json) {
     const QJsonArray models = result.value(QStringLiteral("models")).toArray();
     static const QHash<QString, QString> kForText = {
         {QStringLiteral("aiDenoise"), QStringLiteral("AI 降噪")},
+        {QStringLiteral("aiDenoiseHq"), QStringLiteral("AI 降噪（质量档）")},// FR-4
         {QStringLiteral("separate"), QStringLiteral("人声分离")}};
     static const QHash<QString, QString> kStatusText = {
         {QStringLiteral("installed"), QStringLiteral("已安装")},
@@ -598,6 +613,7 @@ void MainWidget::onModelMissing(const QString& forVerb) {
     // 用途名映射（与七槽/预设文案同词）；未登记动词（未来注册表新引擎）退通用文案
     QString purpose;
     if (forVerb == QLatin1String("aiDenoise")) purpose = QStringLiteral("AI 降噪");
+    else if (forVerb == QLatin1String("aiDenoiseHq")) purpose = QStringLiteral("AI 降噪（质量档）");// FR-4
     else if (forVerb == QLatin1String("separate")) purpose = QStringLiteral("人声分离");
     QMessageBox box(QMessageBox::Question, QString::fromUtf8(kAppTitle),
                     purpose.isEmpty()
@@ -707,7 +723,11 @@ void MainWidget::doBatchStart() {
     QJsonArray steps;
     if (idx < kBatchSingleCount) {// 前 5 项：单动词动作（separate 带 stem；denoise/pitch 注入面板动态参数）
         QJsonObject step;
-        step.insert(QStringLiteral("cmd"), QString::fromLatin1(kBatchSingleActions[idx].verb));
+        // FR-4：AI 动作跟随当前档位（aiVerb 同源——单动词动作与预设链同面）
+        step.insert(QStringLiteral("cmd"),
+                    QLatin1String(kBatchSingleActions[idx].verb) == QLatin1String("aiDenoise")
+                        ? aiVerb()
+                        : QString::fromLatin1(kBatchSingleActions[idx].verb));
         if (QLatin1String(kBatchSingleActions[idx].verb) == QLatin1String("denoise")) {
             step.insert(QStringLiteral("humBase"),
                         chkHum->isChecked()
@@ -725,7 +745,10 @@ void MainWidget::doBatchStart() {
         if (p < 0 || p >= kPipePresetCount) return;
         for (const char* verb : kPipePresets[p].verbs) {
             QJsonObject step;
-            step.insert(QStringLiteral("cmd"), QString::fromLatin1(verb));
+            // FR-4：预设链 AI 步跟随当前档位（doPipeline 同面）
+            step.insert(QStringLiteral("cmd"),
+                        QLatin1String(verb) == QLatin1String("aiDenoise") ? aiVerb()
+                                                                          : QString::fromLatin1(verb));
             if (QLatin1String(verb) == QLatin1String("denoise")) {
                 step.insert(QStringLiteral("humBase"),
                             chkHum->isChecked()
@@ -815,11 +838,20 @@ void MainWidget::doDenoiseWav() {
     media->denoiseWav(curFile, humBase, chkWind->isChecked());
 }
 
+// 当前 AI 降噪档位对应动词（FR-4）：七槽（doDenoiseAiWav）、管线预设步、批处理动作三面组包
+// 同源取值——档位是面板动态状态（humBase/semi 同型），切档即下次任务生效
+QString MainWidget::aiVerb() const {
+    return cmbAiTier && cmbAiTier->currentIndex() == 1 ? QStringLiteral("aiDenoiseHq")
+                                                       : QStringLiteral("aiDenoise");
+}
+
 void MainWidget::doDenoiseAiWav() {
     if (!media || curFile.isEmpty()) return;
+    const bool quality = cmbAiTier && cmbAiTier->currentIndex() == 1;
     set_busy(true);
-    lblStatus->setText(QStringLiteral("AI 降噪中…"));
-    media->denoiseAiWav(curFile);
+    lblStatus->setText(quality ? QStringLiteral("AI 降噪（质量档）中…")
+                               : QStringLiteral("AI 降噪中…"));
+    media->denoiseAiWav(curFile, quality);
 }
 
 void MainWidget::doPitchWav() {
@@ -858,7 +890,10 @@ void MainWidget::doPipeline() {
     QJsonArray steps;
     for (const char* verb : kPipePresets[idx].verbs) {
         QJsonObject step;
-        step.insert(QStringLiteral("cmd"), QString::fromLatin1(verb));
+        // FR-4：预设链 AI 步跟随当前档位（aiDenoise ↔ aiDenoiseHq）；denoise/pitch 动态参数同面注入
+        step.insert(QStringLiteral("cmd"),
+                    QLatin1String(verb) == QLatin1String("aiDenoise") ? aiVerb()
+                                                                      : QString::fromLatin1(verb));
         if (QLatin1String(verb) == QLatin1String("denoise")) {
             step.insert(QStringLiteral("humBase"),
                         chkHum->isChecked()

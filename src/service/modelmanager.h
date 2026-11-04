@@ -1,11 +1,13 @@
 #pragma once
 
-// 模型管理核心（FR-8 片 A，spec §2 D1–D6）：内置模型目录静态表（可下载什么，编译期）+ models.json
-// 本地清单（装了什么：QSaveFile 原子写、损坏按空处理、磁盘实况为准）+ modelList 三视角合并 +
-// modelDownload（QNAM resolve 契约：HEAD 跟重定向 → ETag 指纹对照 → Range 续 .part 跨运行续传 →
-// 流式 sha256 → 同卷 rename 原子落位 → 登记）+ modelImport（setup 试开 = 引擎既有校验器，复制进库
-// 绝不移动）。仅 Qt Core + Network 依赖；QNAM 异步模型由局部 QEventLoop 同步化（命令层单发同步
-// 契约不变，spec D3），壳须保证 QCoreApplication 在位（事件循环前提）。
+// 模型管理核心（FR-8 片 A，spec §2 D1–D6 + FR-4 目录型模型）：内置模型目录静态表（可下载什么，
+// 编译期）+ models.json 本地清单（装了什么：QSaveFile 原子写、损坏按空处理、磁盘实况为准）+
+// modelList 三视角合并 + modelDownload（QNAM resolve 契约：HEAD 跟重定向 → ETag 指纹对照（仅 HF
+// 源）→ Range 续 .part 跨运行续传 → 流式 sha256 → 同卷 rename 原子落位 → 登记）+ modelImport
+// （setup 试开 = 引擎既有校验器，复制进库绝不移动）。FR-4 目录型（dfn3）：下载物/导入源 = tar.gz，
+// 系统 tar 解包 → 整目录落位登记（keyFiles 完整性 = 在位判据）。仅 Qt Core + Network 依赖；
+// QNAM 异步模型由局部 QEventLoop 同步化（命令层单发同步契约不变，spec D3），壳须保证
+// QCoreApplication 在位（事件循环前提）。
 
 #include "errinfo.h"
 

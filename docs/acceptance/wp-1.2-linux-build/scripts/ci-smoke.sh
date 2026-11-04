@@ -15,7 +15,8 @@ VH="$BUILD/video_handler"
 for b in "$ET" "$FT" "$VH"; do [ -x "$b" ] || { echo "FAIL: 缺 $b（先构建）"; exit 1; }; done
 GTCRN=third_party/models/denoiser/gtcrn_simple.onnx
 UVR=third_party/models/separator/UVR-MDX-NET-Voc_FT.onnx
-for m in "$GTCRN" "$UVR"; do [ -f "$m" ] || { echo "FAIL: 缺 $m（先跑 fetch-deps.sh）"; exit 1; }; done
+DFN3DIR=third_party/models/denoiser/dfn3
+for m in "$GTCRN" "$UVR" "$DFN3DIR/config.ini"; do [ -f "$m" ] || { echo "FAIL: 缺 $m（先跑 fetch-deps.sh）"; exit 1; }; done
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
@@ -26,6 +27,7 @@ ffmpeg -y -loglevel error -f lavfi -i "sine=frequency=440:sample_rate=44100:dura
 ffmpeg -y -loglevel error -f lavfi -i "testsrc2=size=320x240:rate=25:duration=3" -f lavfi -i "sine=frequency=440:duration=3" -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest "$WORK/tiny.mp4"
 ffmpeg -y -loglevel error -i "$WORK/st.wav" -f f32le -c:a pcm_f32le -ar 44100 -ac 2 "$WORK/st.f32"
 ffmpeg -y -loglevel error -i "$WORK/st.wav" -f f32le -c:a pcm_f32le -ar 16000 -ac 1 "$WORK/mo.f32"
+ffmpeg -y -loglevel error -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=70" -f f32le -c:a pcm_f32le "$WORK/mo48.f32" # FR-4 dfn3 引擎规格；70s 跨内部 30s 块（round-8：5s 素材全落首块，块界记账零覆盖）
 
 echo "== FFT 属性（WP-1.3：FFT-PR-001..004 自检 + PR-005 numpy 对照，判据 spec/fft-rewrite.md §3）=="
 "$FT" self
@@ -44,6 +46,7 @@ invariance() { # invariance <engine> <in.f32> [参数...]
 invariance dsp "$WORK/st.f32"
 invariance pitch "$WORK/st.f32" 2.0
 invariance ai "$WORK/mo.f32" "$GTCRN"
+invariance dfn3 "$WORK/mo48.f32" "$DFN3DIR" # FR-4 质量档（内部块 30s 缺省；对调用方分块不变）
 invariance sep-voc "$WORK/st.f32" "$UVR"
 invariance sep-inst "$WORK/st.f32" "$UVR"
 
@@ -106,5 +109,14 @@ BATCHTMP="$PWD/$BUILD/.batch-tmp" # 绝对路径，同 MDLTMP 口径
 mkdir -p "$BATCHTMP" # 复用目录，跑批 trap 自清内部工作区
 TMPDIR="$BATCHTMP" bash docs/acceptance/fr10-batch-queue/scripts/run-batch.sh "$BUILD"
 TMPDIR="$BATCHTMP" bash docs/acceptance/fr10-batch-queue/scripts/gui-batch.sh "$BUILD" # round-2：widget 面探针（BATCH-GUI 族）
+
+echo "== FR-4 质量档（FR4/GFR4 用例族；工作区走磁盘卷 TMPDIR 同 mdl 原因——"
+echo "   2h 素材 691MB + 1.4GB f32 产物与真网下载副本会撞 /tmp 配额，MDL-005 离线自动 SKIP）=="
+FR4TMP="$PWD/$BUILD/.fr4-tmp" # 绝对路径，同 MDLTMP 口径
+mkdir -p "$FR4TMP" # 复用目录，跑批 trap 自清内部工作区
+TMPDIR="$FR4TMP" bash docs/acceptance/fr4-quality-tier/scripts/run-fr4.sh "$BUILD"
+
+echo "== FR-4 golden 契约守卫（round-2：官方 CLI 一文件一进程——批量调用状态串染实证，防 gen_golden 被改成批量）=="
+bash docs/acceptance/fr4-quality-tier/scripts/dfn3-cli-isolation.sh
 
 echo "== ci-smoke 全绿 =="

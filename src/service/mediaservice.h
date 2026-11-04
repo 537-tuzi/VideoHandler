@@ -37,7 +37,7 @@ signals:
     void videoRequested(const QString& inPath);// 无声视频任务请求
     void probeRequested(const QString& inPath);// 文件探测请求
     void denoiseRequested(const QString& inPath, HumBase humBase, bool removeWind);// 降噪任务请求
-    void aiDenoiseRequested(const QString& inPath);// AI 降噪任务请求
+    void aiDenoiseRequested(const QString& inPath, bool quality);// AI 降噪任务请求（FR-4：false=快速档 GTCRN / true=质量档 DeepFilterNet3）
     void pitchRequested(const QString& inPath, double semiTones);// 变调任务请求
     void sepVocalsRequested(const QString& inPath, bool instrumental);// 人声分离/伴奏提取任务请求
     void workspaceRootRequested(const QString& root);// 工作区根注入请求（FR-A4 片 B，队列转发 worker）
@@ -67,7 +67,7 @@ public slots:
     void extractAudio(const QString& inPath);// 提交音轨提取任务
     void extractVideo(const QString& inPath);// 提交无声视频提取任务
     void denoiseWav(const QString& inPath, HumBase humBase, bool removeWind);// 提交降噪任务，输出到工作区版本目录（根未注入时落源目录）
-    void denoiseAiWav(const QString& inPath);// 提交 AI 降噪任务，输出到工作区版本目录（根未注入时落源目录）
+    void denoiseAiWav(const QString& inPath, bool quality = false);// 提交 AI 降噪任务（FR-4 档位随行；缺省快速档 = 旧单参调用面零漂移），输出到工作区版本目录（根未注入时落源目录）
     void pitchWav(const QString& inPath, double semiTones);// 提交变调任务，输出到工作区版本目录（根未注入时落源目录）
     void sepVocals(const QString& inPath, bool instrumental);// 提交人声分离/伴奏提取任务，输出到工作区版本目录（根未注入时落源目录）
     void pipeline(const QString& inPath, const QString& stepsJson);// 提交管线一键任务（FR-9 D8，占 busy；worker 解析 stepsJson、模型步两级缺省解析后组 pipeline 请求）

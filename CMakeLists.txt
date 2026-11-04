@@ -16,6 +16,8 @@ add_library(engine STATIC
     src/service/aidenoiser.cpp
     src/service/commandlayer.h
     src/service/commandlayer.cpp
+    src/service/dfn3denoiser.h
+    src/service/dfn3denoiser.cpp
     src/service/dspdenoiser.h
     src/service/dspdenoiser.cpp
     src/service/engineregistry.h

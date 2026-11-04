@@ -361,10 +361,16 @@ else
 fi
 
 # 目录外清单条目（自由导入的社区模型）入列：installed + license unknown
-jr MDL-010 0 "{\"v\":1,\"cmd\":\"modelList\",\"root\":\"$LIBI\"}" \
-    ok=true str:result.models.2.id=my-gtcrn str:result.models.2.status=installed \
-    contains:result.models.2.license=unknown str:result.models.2.for=aiDenoise \
-    exists:result.models.2.path
+# （FR-4 round-1 改按 id 定位：目录表增 dfn3 条目后列表基数为 4+，固定下标断言随目录表演进漂移）
+jr MDL-010 0 "{\"v\":1,\"cmd\":\"modelList\",\"root\":\"$LIBI\"}" ok=true
+ex MDL-010z python3 -c "
+import json, os, sys
+ms = json.load(open(sys.argv[1]))['result']['models']
+m = [x for x in ms if x['id'] == 'my-gtcrn']
+assert len(m) == 1, [x['id'] for x in ms]
+m = m[0]
+assert m['status'] == 'installed' and m['for'] == 'aiDenoise' and 'unknown' in m['license'], m
+assert os.path.isfile(m['path']), m" "$W/MDL-010.resp"
 
 # =============================================================
 echo "== MDL-ENVELOPE：信封分叉零漂移（requiresInput 命门） =="

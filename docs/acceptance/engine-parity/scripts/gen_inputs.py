@@ -47,6 +47,30 @@ def sine(freq: float, dur: float, sr: int, ch: int) -> np.ndarray:
     return (np.stack([x] * ch, axis=1)).astype(np.float32)
 
 
+def dfn3_speech(seed: int, n: int, sr: int) -> np.ndarray:
+    """FR-4（PAR-DF）合成 noisy 语音：150Hz 基频带颤音 + 1/h 谐波堆 + 音节包络 + 10dB 白噪。
+
+    n 样本（48k 单声道）；起音相位 +π 使 t=0 即有声（近零 golden 会让相对 dB 判据失真）。
+    平稳周期结构会让注意力记忆锚定——SEAM 误差较真语音偏大（OQ-2 数据，fr4 round-1.md）。
+    """
+    rng = np.random.default_rng(seed)
+    t = np.arange(n) / sr
+    f0 = 150 + 6 * np.sin(2 * np.pi * 0.7 * t)
+    ph = 2 * np.pi * np.cumsum(f0) / sr
+    v = np.zeros(n)
+    for h in range(1, 12):
+        v += (0.28 / h) * np.sin(ph * h + 0.3 * h)
+    v *= 1.0 + 0.5 * np.sin(2 * np.pi * 3.1 * t)
+    syll = 0.5 * (1 + np.sin(2 * np.pi * 1.7 * t + np.pi - 1.2))
+    v *= np.maximum(0.0, syll - 0.15)
+    v += 0.003 * rng.standard_normal(n)
+    noise = rng.standard_normal(n) * 0.03
+    sp = np.sqrt(np.mean(v ** 2)); sn = np.sqrt(np.mean(noise ** 2))
+    y = v + noise * (sp / sn / 10 ** 0.5)
+    y = (y / np.abs(y).max() * 0.7).astype(np.float32)
+    return y[:, None]  # (n,1) 单声道，与其余素材同形
+
+
 # (名字, 采样率, 声道数, 生成器)——边界素材盯 hop 边界：MDX kHop=1024、GTCRN hop=256
 CASES = [
     ('sine1k',    sine(1000, 5.0, SR_ST, 2),   SR_ST, 'sanity'),
@@ -68,6 +92,11 @@ CASES = [
     ('bound256',  None, SR_MO, 'GTCRN 边界：恰一 hop（反射深折叠）'),
     ('bound1025', None, SR_MO, 'GTCRN 边界：odd 尾（1 hop+1）'),
     ('bound4097', None, SR_MO, 'GTCRN 边界：odd 尾（16 hop+1）'),
+    # FR-4（PAR-DF）：DFN3 引擎规格 48k/1ch，hop=480；dfn3noisy65 主 parity 素材（65s 跨两块，
+    # SEAM 同素材），dfn3bound/dfn3short 边界组（τ<2 零初始化发射 + 非整 hop 尾）
+    ('dfn3noisy65', None, SR_48, 'PAR-DF 主素材：65s 合成 noisy 语音（seed 42）'),
+    ('dfn3bound',   None, SR_48, 'PAR-DF 边界：480*7+377（seed 43，立即起音）'),
+    ('dfn3short',   None, SR_48, 'PAR-DF 边界：480*3+123（最短可发射 3 帧）'),
 ]
 
 
@@ -87,6 +116,9 @@ def main():
             arr = white(5.0, SR_ST, 2)[:n]
         elif name.startswith('bound'):  # GTCRN 边界：white16mo（16k 单声道）前 N 样本前缀
             arr = white(5.0, SR_MO, 1)[:int(name[5:])]
+        elif name.startswith('dfn3'):  # PAR-DF 素材：合成 noisy 语音（48k 单声道）
+            n = {'dfn3noisy65': 48000 * 65, 'dfn3bound': 480 * 7 + 377, 'dfn3short': 480 * 3 + 123}[name]
+            arr = dfn3_speech(42 if name == 'dfn3noisy65' else 43, n, SR_48)
         f32 = OUT / f'{name}.f32'
         wav = OUT / f'{name}.wav'
         arr.tofile(f32)

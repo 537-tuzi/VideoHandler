@@ -1,6 +1,7 @@
 #include "engineregistry.h"
 
 #include "aidenoiser.h"
+#include "dfn3denoiser.h"
 #include "dspdenoiser.h"
 #include "pitchshifter.h"
 #include "vocalseparator.h"
@@ -19,6 +20,7 @@ namespace {
 QString suffixTranscoded(const QJsonObject&) { return QString::fromLatin1(kSuffixTranscoded); }
 QString suffixDenoised(const QJsonObject&) { return QString::fromLatin1(kSuffixDenoised); }
 QString suffixAi(const QJsonObject&) { return QString::fromLatin1(kSuffixAi); }
+QString suffixAiHq(const QJsonObject&) { return QString::fromLatin1(kSuffixAiHq); }
 QString suffixPitch(const QJsonObject&) { return QString::fromLatin1(kSuffixPitch); }
 QString suffixSeparate(const QJsonObject& args) {
     return args.value(QLatin1String("stem")).toString() == QLatin1String("instrumental")
@@ -54,6 +56,12 @@ std::unique_ptr<IStreamEngine> createDenoise(const QJsonObject& args, int srcRat
 
 std::unique_ptr<IStreamEngine> createAiDenoise(const QJsonObject& args, int, int, QString* err) {
     auto engine = std::make_unique<AiDenoiser>();// 工作点由模型 metadata 锁定，源规格不参与 setup
+    if (!engine->setup(args.value(QLatin1String("model")).toString(), err)) return nullptr;
+    return engine;
+}
+
+std::unique_ptr<IStreamEngine> createAiDenoiseHq(const QJsonObject& args, int, int, QString* err) {
+    auto engine = std::make_unique<Dfn3Denoiser>();// 48k 单声道工作点由 config.ini 锁定，源规格不参与 setup
     if (!engine->setup(args.value(QLatin1String("model")).toString(), err)) return nullptr;
     return engine;
 }
@@ -165,6 +173,16 @@ const QList<EngineEntry>& engineTable() {
             .outputSuffix = suffixAi,
             .semanticCheck = nullptr,
             .create = createAiDenoise,
+        },
+        EngineEntry{// FR-4 质量档：DeepFilterNet3，48k 工作点但不锁兜底——输出跟随源（NFR-Q3 首个 AI 引擎）
+            .id = QStringLiteral("aiDenoiseHq"),
+            .params = {},
+            .requiresModel = true,
+            .setupErrorClass = ErrCode::Model,
+            .lockCanonicalOutput = false,
+            .outputSuffix = suffixAiHq,
+            .semanticCheck = nullptr,
+            .create = createAiDenoiseHq,
         },
         EngineEntry{// setup 失败归 Engine（现状 cmdPitch 同类）
             .id = QStringLiteral("pitch"),

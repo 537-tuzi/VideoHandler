@@ -1,0 +1,66 @@
+用例,round-1,round-2,round-3,说明
+FR4-OK-001,PASS,PASS,PASS,direct 48k 单声道：ok + durationSec=5 + engineResampled=false + outputSpec 48000/1ch/f32（AI 引擎首个跟随源）
+FR4-OK-001z,PASS,PASS,PASS,产物 ffprobe 体检 pcm_f32le/48000/1（容器面交叉验证）
+FR4-OK-001d,PASS,PASS,PASS,产物时长 5.000000 恒等长（输出长度=输入长度，附裁 A 钉死）
+FR4-OK-002,PASS,PASS,PASS,工作区模式：v001_aiDenoiseHq + 后缀 _aihq + workspace{root
+FR4-OK-002z,PASS,PASS,PASS,workspace.json 版本记录键面恰等 8 键（无 pipeline/batch 标记——非管线/批任务键面零漂移）+ model.path 登记 dfn3
+FR4-OK-002f,PASS,PASS,PASS,版本目录 v001_aiDenoiseHq/<stem>_aihq.wav 落位
+FR4-OK-003,PASS,PASS,PASS,44.1k 立体声源：engineResampled=true + 输出回源规格 44100/2（模型工作点 48k/1ch 锁定，spec §3）
+FR4-NEG-001,PASS,PASS,PASS,未知字段 bogusField → E_PARAMS「未知字段：bogusField」+ 零 result 泄漏
+FR4-NEG-002,PASS,PASS,PASS,模型目录缺 df_dec.onnx → E_MODEL「模型目录不完整（缺 df_dec.onnx）」（目录型模型按关键文件集校验）
+FR4-NEG-003,PASS,PASS,PASS,workspace+output 同给 → E_PARAMS「output 与 workspace 不能同给」
+FR4-NEG-004,PASS,PASS,PASS,output==input → E_PARAMS「output 不能与 input 相同（原件只读）」（红线守卫）
+FR4-NEG-005,PASS,PASS,PASS,模型目录不存在 → E_MODEL「找不到模型 <路径>」
+FR4-NEG-noart,PASS,PASS,PASS,负例五连零产物（失败删半成品不留孤儿）
+FR4-EQV-001,PASS,PASS,PASS,旧 aiDenoise（GTCRN）同输入两次逐字节一致（确定性零漂移）
+FR4-EQV-002,PASS,PASS,PASS,旧 aiDenoise 工作区命名面：v001_aiDenoise/<stem>_ai.wav 不变
+FR4-EQV-002f,PASS,PASS,PASS,旧后缀 _ai 产物文件落位
+FR4-EQV-003,PASS,PASS,PASS,旧动词缺模型报文逐字锁定「找不到模型 <路径>」（str 精确断言）
+FR4-REG-001,PASS,PASS,PASS,pipeline 步 0=aiDenoiseHq：v001_aiDenoiseHq→v002_pitch 成功链 + 终产物 v002_pitch
+FR4-REG-001f,PASS,PASS,PASS,链中 v001_aiDenoiseHq 版本目录落位
+FR4-REG-001z,PASS,PASS,PASS,版本记录双步 pipeline{index:1/2
+FR4-REG-002,PASS,PASS,PASS,batch 单步模板 aiDenoiseHq：total=2 okCount=2 items 产物均 _aihq
+FR4-REG-002z,PASS,PASS,PASS,批版本记录 batch{index:1
+FR4-REG-003,PASS,PASS,PASS,pipeline 步词表负例：noSuchEngine → E_PARAMS「steps[0] 的 cmd 不可链式」（新动词经引擎表自动入链，非引擎拒收）
+FR4-REG-003z,PASS,PASS,PASS,整链静态预校验：一步不合法零执行零工作区目录
+FR4-MDL-001,PASS,PASS,PASS,modelList 空库：dfn3 条目 for=aiDenoiseHq/status=available/sizeBytes=7983136/sha256=c94d91f7…/license=MIT…
+FR4-MDL-001z,PASS,PASS,PASS,gtcrn 条目零漂移（for=aiDenoise/available/535638 不因第三条目移位）
+FR4-MDL-002,PASS,PASS,PASS,by-id 导入官方 tar（id=dfn3）→ ok + result.path
+FR4-MDL-002z,PASS,PASS,PASS,库内 denoiser/dfn3/ 四关键文件齐（config.ini+3 onnx）+ models.json 登记 for=aiDenoiseHq
+FR4-MDL-002v,PASS,PASS,PASS,登记后 modelList 视角翻 installed（三视角合并对目录条目同样生效）
+FR4-MDL-003,PASS,PASS,PASS,自由导入（for=aiDenoiseHq）→ ok
+FR4-MDL-003z,PASS,PASS,PASS,登记 id=包名 myhq + license=unknown（用户自行核验，§161）
+FR4-MDL-004a,PASS,PASS,PASS,free 导入非法 tar 字节流 → E_FILE「解包模型失败」（tar 退出码非零）
+FR4-MDL-004b,PASS,PASS,PASS,by-id 导入指纹不符 → E_MODEL「模型指纹与目录条目不符」（先比对目录表 sha 再解包）
+FR4-MDL-004p,PASS,PASS,PASS,两种失败路径均无 .part 残留
+FR4-MDL-004z,PASS,PASS,PASS,登记失败删产物不留孤儿（lib4 无 dfn3 目录）
+FR4-MDL-005,PASS,PASS,PASS,真网下载 dfn3 → ok + result.path 落位（离线自动 SKIP）
+FR4-MDL-005z,PASS,PASS,PASS,下载登记 sha256 与目录表一致 + path=denoiser/dfn3
+FR4-MDL-005p,PASS,PASS,PASS,下载后库树无 .part 残留
+FR4-MDL-006,PASS,PASS,PASS,二次 modelDownload 幂等 ok
+FR4-MDL-006z,PASS,PASS,PASS,幂等秒回（<3s，登记指纹在位即信零网络）
+GFR4-101,PASS,PASS,PASS,engine 相 hq-missing：文案「找不到 AI 降噪（质量档）模型：」+ modelMissing(aiDenoiseHq) 逐字
+GFR4-102,PASS,PASS,PASS,engine 相 hq-lib：库已装 dfn3 任务 ok + 版本记录 model.path=库路径（两级缺省解析对目录型模型生效）
+GFR4-103,PASS,PASS,PASS,engine 相 fast-missing：旧文案「找不到 AI 降噪模型：」+ modelMissing(aiDenoise) 零漂移锚
+GFR4-201,PASS,PASS,PASS,gui 相档位缺省 idx=0 快速 + 两项文案「快速（GTCRN）|质量（DeepFilterNet3）」；切质量档 QSettings aiDenoiseTier=quality + 新实例读回 idx=1
+GFR4-202,PASS,PASS,PASS,gui 相三路组包同源 aiVerb()：七槽 quality=1、管线预设步 0 cmd=aiDenoiseHq、批 AI 单步 cmd=aiDenoiseHq（inputs=2）
+GFR4-203,PASS,PASS,PASS,切回快速档三面回落 cmd=aiDenoise（档位=面板动态状态，非组包期固化）
+FR4-RES-001,PASS,PASS,PASS,生产 CLI 65s 素材 RTF=0.0287（门 ≤0.5；设计轮裸引擎实测 0.0147 同量级）
+FR4-RES-002,PASS,PASS,PASS,2h 48k 单声道生产 CLI 峰值 RSS=829 MiB（门 ≤2048，NFR-P4 严格流式）+ wall 3:08
+FR4-RES-002d,PASS,PASS,PASS,2h 产物时长 7200s 恒等长（流式无截断无丢帧）
+FR4-998,PASS,PASS,PASS,素材原件 sha256 终闸不变（原件只读红线）
+FR4-999,PASS,PASS,PASS,third_party DFN3 tar sha256 终闸不变（不动 third_party 红线）
+PAR-DF-001..003/SEAM/FEAT/SR,PASS,PASS,PASS,parity 族挂 engine-parity matrix round-7 列（−75.3/−78.9dB/abs 1.65e-05/−3.4dB/图级 0/bit-exact），证据 engine-parity/round-7.md 与本目录 round-1.md §1
+FR4-NEG-002m,,PASS,PASS,模型目录缺 config.ini → E_MODEL「模型目录不完整（缺 config.ini）」（关键文件集逐件文案）
+FR4-NEG-002e,,PASS,PASS,模型目录缺 enc.onnx → E_MODEL「模型目录不完整（缺 enc.onnx）」
+FR4-MDL-004c,,PASS,PASS,free 导入坏内容 tar.gz（文件名齐内容垃圾）→ 试开败 E_MODEL 文案含 config.ini
+FR4-MDL-004c2,,PASS,PASS,坏内容导入失败无产物目录（lib 无 fakedfn3 孤儿）
+FR4-MDL-004c3,,PASS,PASS,同失败路径无 .part 残留
+FR4-MDL-004c4,,PASS,PASS,同失败路径无 import-stage stage 目录残留
+GFR4-104,,PASS,PASS,engine 相 fast-lib：库内 gtcrn 两级缺省解析→任务 ok + modelMissing 0 + 版本 model.path=库路径
+GFR4-104b,,PASS,PASS,CLI --ai-denoise 产物与 GUI 槽产物逐字节 cmp（快速档产物级直证）
+GFR4-204,,PASS,PASS,gui 相 hq 档缺模型问询「AI 降噪（质量档）模型不可用，是否打开模型管理下载？」逐字
+GFR4-205,,PASS,PASS,fast 档同位问询「AI 降噪模型不可用，是否打开模型管理下载？」逐字（零漂移锚）
+ISO-001,,PASS,PASS,官方 CLI 批量 vs 独立调用首件 cmp 逐字节一致（golden 契约守卫 dfn3-cli-isolation.sh）
+ISO-002,,PASS,PASS,次件 cmp 不一致（批量调用状态串染实证；本条转红=CLI 行为漂移须重审 gen_golden 一文件一进程注释）
+FR4-RES-002p,,PASS,PASS,2h 管线 [aiDenoiseHq→pitch] 峰值 RSS=729MiB（门≤2048）+ wall 3:22 + 产物时长 7200s 恒等（BATCH-MEM 方法论）

@@ -84,7 +84,7 @@ public slots:
     void doExtractVideo(const QString& inPath);// 后台提取无声视频
     void doProbe(const QString& inPath);// 后台探测文件流信息
     void doDenoiseWav(const QString& inPath, HumBase humBase, bool removeWind);// 后台降噪转码
-    void doDenoiseAiWav(const QString& inPath);// 后台 AI 降噪转码（GTCRN）
+    void doDenoiseAiWav(const QString& inPath, bool quality = false);// 后台 AI 降噪转码（FR-4：false=GTCRN 快速档 / true=DeepFilterNet3 质量档；缺省快速档 = 旧单参调用面零漂移）
     void doPitchWav(const QString& inPath, double semiTones);// 后台变调转码（SoundTouch）
     void doSepVocals(const QString& inPath, bool instrumental);// 后台人声分离/伴奏提取转码（MDX-Net）
     void doPipeline(const QString& inPath, const QString& stepsJson);// 后台管线一键（FR-9：解析 steps → 模型步两级缺省解析 → 组 pipeline 请求走 runRequest）

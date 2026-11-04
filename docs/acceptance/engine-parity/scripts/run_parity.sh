@@ -7,6 +7,8 @@
 #   PAR-DS：scipy（~/.local）        PAR-GT：sherpa-onnx（~/.local）
 #   PAR-MD：audio-separator（test/pydeps，PYTHONPATH 注入）   PAR-PT：numpy
 #   PAR-SR：scipy + ffmpeg + video_handler（round-5 起转码层 CLI 级 DUT）
+#   PAR-DF（FR-4）：DFN3 模型+官方 tar+deep-filter CLI（fetch-deps.sh）；FEAT 子族另需
+#                  python onnxruntime；SR 子族另需 video_handler
 # 环境变量 PARITY_REQUIRED=1（CI）时任何 SKIP 升级为 FAIL——CI 是 parity 门禁的强制点，
 # 本地未装参考实现依赖时允许降级跑其余族。
 # 用法：run_parity.sh [构建目录=build-linux]
@@ -148,6 +150,88 @@ else
     [ -x "$VH" ] || skip "PAR-SR 缺 $VH（先构建 video_handler）"
     command -v ffmpeg >/dev/null 2>&1 || skip "PAR-SR 缺 ffmpeg"
     python3 -c 'import scipy' 2>/dev/null || skip "PAR-SR 缺 scipy（配方 scripts/requirements.txt）"
+fi
+
+# PAR-DF（FR-4 质量档 DFN3 vs 官方 deep-filter CLI v0.5.1 musl；spec fr4-quality-tier D6
+# 两层判据 + 图级夹具梯子）：整段单 Run（engine_test dfn3 块长 0 专项）−60dB 硬门禁
+#（NFR-Q1）；SEAM = 生产块 30s vs 整段单 Run 的接缝量化（OQ-2 阈值未定，回归护栏口径，
+# 基线随 fr4 round 重登记）；FEAT = 图级夹具回放锁图行为；SR = 48k 源全链免重采样 CLI 级。
+# 依赖：DFN3 目录模型 + 官方 tar + CLI（fetch-deps.sh 备齐）+ numpy；FEAT 另需 python onnxruntime。
+echo "== PAR-DF（FR-4：DFN3 vs 官方 deep-filter CLI；整段单 Run −60dB 硬门禁）=="
+DFN3DIR=third_party/models/denoiser/dfn3
+DFN3TAR=third_party/models/denoiser/DeepFilterNet3_onnx.tar.gz
+DFCLI=third_party/tools/deep-filter
+if [ -d "$DFN3DIR" ] && [ -x "$DFCLI" ] && [ -f "$DFN3TAR" ]; then
+    ok=1
+    for m in dfn3noisy65 dfn3bound dfn3short; do
+        "$ET" dfn3 "$OUT/$m.f32" "$W/$m.single.f32" 1000000000 "$DFN3DIR" 0 >/dev/null \
+            || { echo "  FAIL: dfn3 DUT 运行 $m（整段单 Run）"; FAIL=1; ok=0; break; }
+    done
+    if [ "$ok" = 1 ]; then
+        python3 "$S/gen_golden.py" dfn3 dfn3noisy65 dfn3bound dfn3short >/dev/null \
+            || { echo "  FAIL: dfn3 金样本生成"; FAIL=1; }
+        # ①② 边界组：dfn3bound=480*7+377（τ<2 零初始化发射 + 非整 hop 尾）
+        ck python3 "$S/compare.py" "$W/dfn3noisy65.single.f32" "$OUT/dfn3noisy65.df.golden.f32" --case PAR-DF-001 --gate -60
+        ck python3 "$S/compare.py" "$W/dfn3bound.single.f32"   "$OUT/dfn3bound.df.golden.f32"   --case PAR-DF-002 --gate -60
+        # ③ 最短素材（3 帧）：降噪输出近零 → 相对 dB 失真，绝对判据（compare.py 头注）
+        ck python3 "$S/compare.py" "$W/dfn3short.single.f32"   "$OUT/dfn3short.df.golden.f32"   --case PAR-DF-003 --gate-abs 2e-4
+        # ④ 零掩码门控（round-8，审查 P1 修复护栏）：阈值搬移法双侧同语义——引擎侧模型目录副本
+        #    config.ini lsnr_min=10，CLI 侧 --min-db-thresh 10，强制触发零掩码帧（官方该档不跑
+        #    解码器、不占行；round-7 引擎曾游标错位此处 0dB 级 FAIL）
+        mkdir -p "$W/dfn3min10"
+        cp "$DFN3DIR"/config.ini "$DFN3DIR"/enc.onnx "$DFN3DIR"/erb_dec.onnx "$DFN3DIR"/df_dec.onnx "$W/dfn3min10"/
+        sed -i 's/^lsnr_min = -15$/lsnr_min = 10/' "$W/dfn3min10/config.ini"
+        grep -q '^lsnr_min = 10$' "$W/dfn3min10/config.ini" || { echo "  FAIL: dfn3min10 config.ini 阈值搬移未生效"; FAIL=1; }
+        python3 "$S/gen_golden.py" dfn3min10 dfn3noisy65 >/dev/null \
+            || { echo "  FAIL: dfn3min10 金样本生成"; FAIL=1; }
+        "$ET" dfn3 "$OUT/dfn3noisy65.f32" "$W/dfn3noisy65.min10.f32" 1000000000 "$W/dfn3min10" 0 >/dev/null \
+            || { echo "  FAIL: dfn3 DUT 运行 dfn3noisy65（min10 整段单 Run）"; FAIL=1; }
+        ck python3 "$S/compare.py" "$W/dfn3noisy65.min10.f32" "$OUT/dfn3noisy65.dfmin10.golden.f32" --case PAR-DF-004 --gate -60
+        # SEAM：生产块 30s vs 整段单 Run（回归护栏：round-1 基线 −3.4dB + 0.9dB 余量；
+        # 真语音素材 −12.8dB 佐证 + K 扫描/注意力记忆结论见 fr4-quality-tier/round-1.md，OQ-2 裁阈值）
+        "$ET" dfn3 "$OUT/dfn3noisy65.f32" "$W/dfn3noisy65.b30.f32" 4096 "$DFN3DIR" >/dev/null \
+            || { echo "  FAIL: dfn3 DUT 运行（生产块 30s）"; FAIL=1; }
+        ck python3 "$S/compare.py" "$W/dfn3noisy65.b30.f32" "$W/dfn3noisy65.single.f32" --case PAR-DF-SEAM --gate -2.5
+        # FEAT：图级夹具回放（缺 python onnxruntime 或图级夹具目录整子族 SKIP——夹具为设计轮
+        # 手工就位产物，fetch-deps 不备；净环境须 SKIP 而非 FAIL，runbook 见 fr4-measurement.md）
+        if python3 -c 'import onnxruntime' 2>/dev/null \
+           && [ -d third_party/models/candidates/dfn3/fixtures-graphlevel ]; then
+            ck python3 "$S/dfn3_feat_check.py"
+        else
+            python3 -c 'import onnxruntime' 2>/dev/null \
+                || skip "PAR-DF-FEAT 缺 python onnxruntime"
+            [ -d third_party/models/candidates/dfn3/fixtures-graphlevel ] \
+                || skip "PAR-DF-FEAT 缺图级夹具目录（设计轮手工就位，再生成 runbook 见 docs/reference/fr4-dfn3-measurement.md）"
+        fi
+        # SR：48k 单声道源全链免重采样（PAR-SR-001 同型：头跟随源 + engineResampled=false +
+        # 生产链 vs 引擎直调整段单 Run；AI 引擎首个跟随源，spec canonical-rate-48k）
+        VH="$BUILD/video_handler"
+        if [ -x "$VH" ]; then
+            mkdir -p "$W/fr4sr"
+            if printf '{"cmd":"aiDenoiseHq","input":"%s","output":"%s","model":"%s"}' \
+                    "$PWD/$OUT/dfn3bound.wav" "$W/fr4sr/bound_hq.wav" "$PWD/$DFN3DIR" \
+                | "$VH" --json >"$W/fr4sr/resp.json" 2>/dev/null \
+               && python3 - "$W/fr4sr/resp.json" <<'PYEOF'
+import json, sys
+r = json.load(open(sys.argv[1]))
+res = r.get('result') or {}
+assert r.get('ok') is True, f"aiDenoiseHq 失败: {r.get('error')}"
+assert res.get('engineResampled') is False, f"48k 源不应重采样: {res}"
+assert res['outputSpec']['sampleRate'] == 48000 and res['outputSpec']['channels'] == 1, res['outputSpec']
+print('PAR-DF-SR-meta: PASS  engineResampled=false, 48000/1ch')
+PYEOF
+            then
+                ck python3 "$S/sr_check.py" "$W/fr4sr/bound_hq.wav" --case PAR-DF-SR-head --sr 48000 --ch 1 --dump "$W/fr4sr/bound_hq.f32"
+                ck python3 "$S/compare.py" "$W/fr4sr/bound_hq.f32" "$W/dfn3bound.single.f32" --case PAR-DF-SR --gate -60
+            else
+                echo "  FAIL: PAR-DF-SR 生产链运行/断言"; FAIL=1
+            fi
+        else
+            skip "PAR-DF-SR 缺 $VH（先构建 video_handler）"
+        fi
+    fi
+else
+    skip "PAR-DF 缺 DFN3 模型/deep-filter CLI（先跑 fetch-deps.sh）"
 fi
 
 if [ "$FAIL" = 1 ]; then
