@@ -19,6 +19,8 @@ enum class HumBase;// hum 基频制式（定义在 dspdenoiser.h，信号参数�
 // 缺失动词以 error.stepCmd 为准，壳照搬「请求 cmd→动词」会引导错用途模型）
 // FR-10：batch 一对信号槽（inputsJson/stepsJson 同型 QString 传 JSON）；busy 整批一锁——
 // 一次 acquire 一次 release（worker 内逐件 execute 不再逐件 jobDone，杜绝件间锁窗）
+// FR-1：六任务 + pipeline 信号槽尾参 track（≥0 = 容器内音频流绝对索引，缺省 -1 = best-stream
+// 零漂移）；probeInfoFinished 转发 worker 双发射的结构化探测（GUI 建轨道下拉，wsInfo 同型）
 class MediaService : public QObject
 {
     Q_OBJECT
@@ -33,24 +35,25 @@ private:
     QThread* thread;// 后台工作线程
     FFExtractor* worker;// 任务执行者，无父对象供跨线程迁移
 signals:
-    void audioRequested(const QString& inPath);// 音轨任务请求
-    void videoRequested(const QString& inPath);// 无声视频任务请求
+    void audioRequested(const QString& inPath, int track = -1);// 音轨任务请求（FR-1 track：≥0 = 容器内音频流绝对索引）
+    void videoRequested(const QString& inPath);// 无声视频任务请求（FR-1：无轨参——extractVideo 拒收 track）
     void probeRequested(const QString& inPath);// 文件探测请求
-    void denoiseRequested(const QString& inPath, HumBase humBase, bool removeWind);// 降噪任务请求
-    void aiDenoiseRequested(const QString& inPath, bool quality);// AI 降噪任务请求（FR-4：false=快速档 GTCRN / true=质量档 DeepFilterNet3）
-    void pitchRequested(const QString& inPath, double semiTones);// 变调任务请求
-    void sepVocalsRequested(const QString& inPath, bool instrumental);// 人声分离/伴奏提取任务请求
+    void denoiseRequested(const QString& inPath, HumBase humBase, bool removeWind, int track = -1);// 降噪任务请求（FR-1 track 尾参）
+    void aiDenoiseRequested(const QString& inPath, bool quality, int track = -1);// AI 降噪任务请求（FR-4：false=快速档 GTCRN / true=质量档 DeepFilterNet3；FR-1 track 尾参）
+    void pitchRequested(const QString& inPath, double semiTones, int track = -1);// 变调任务请求（FR-1 track 尾参）
+    void sepVocalsRequested(const QString& inPath, bool instrumental, int track = -1);// 人声分离/伴奏提取任务请求（FR-1 track 尾参）
     void workspaceRootRequested(const QString& root);// 工作区根注入请求（FR-A4 片 B，队列转发 worker）
     void wsInfoRequested(const QString& input);// 处理历史查询请求（FR-A4 片 B，只读不占 busy）
     void modelRootRequested(const QString& root);// 模型库根注入请求（FR-8 片 B，队列转发 worker）
     void modelListRequested();// 模型列表查询请求（FR-8 片 B，只读不占 busy）
     void modelDownloadRequested(const QString& id, const QString& endpoint);// 模型下载请求（FR-8 片 B，占 busy）
     void modelImportRequested(const QString& path, const QString& forVerb);// 模型导入请求（FR-8 片 B，占 busy）
-    void pipelineRequested(const QString& inPath, const QString& stepsJson);// 管线一键请求（FR-9 D8，占 busy；stepsJson 为步骤数组 Compact JSON）
+    void pipelineRequested(const QString& inPath, const QString& stepsJson, int track = -1);// 管线一键请求（FR-9 D8，占 busy；stepsJson 为步骤数组 Compact JSON；FR-1 track 尾参=源头文件选轨）
     void batchRequested(const QString& inputsJson, const QString& stepsJson);// 批处理请求（FR-10 D8，占 busy；inputsJson 为件路径数组、stepsJson 为共享模板，均 Compact JSON）
     void progress(int pct);// 任务进度百分比
     void jobFinished(bool ok, const QString& message);// 任务完成通知
     void probeFinished(bool ok, const QString& info);// 文件探测完成
+    void probeInfoFinished(bool ok, const QString& json);// 结构化探测完成（FR-1：ok 时 json 为 probe result 的 Compact JSON——轨道下拉据此建；与 probeFinished 同遍探测双发射）
     void wsInfoFinished(bool ok, const QString& json);// 处理历史查询完成（ok 时 json 为 result 的 Compact JSON）
     void modelListFinished(bool ok, const QString& json);// 模型列表查询完成（ok 时 json 为 result 的 Compact JSON）
     void modelOpFinished(bool ok, const QString& message);// 模型下载/导入完成（busy 据此释放；message 为壳重建文案或 error.message 直通）
@@ -64,12 +67,12 @@ public slots:
     void modelDownload(const QString& id, const QString& endpoint);// 提交模型下载（占 busy 可取消，进度走 progress）
     void modelImport(const QString& path, const QString& forVerb);// 提交模型导入（自由导入带 for，占 busy 可取消）
     void probe(const QString& inPath);// 提交文件探测任务（异步，结果走信号）
-    void extractAudio(const QString& inPath);// 提交音轨提取任务
-    void extractVideo(const QString& inPath);// 提交无声视频提取任务
-    void denoiseWav(const QString& inPath, HumBase humBase, bool removeWind);// 提交降噪任务，输出到工作区版本目录（根未注入时落源目录）
-    void denoiseAiWav(const QString& inPath, bool quality = false);// 提交 AI 降噪任务（FR-4 档位随行；缺省快速档 = 旧单参调用面零漂移），输出到工作区版本目录（根未注入时落源目录）
-    void pitchWav(const QString& inPath, double semiTones);// 提交变调任务，输出到工作区版本目录（根未注入时落源目录）
-    void sepVocals(const QString& inPath, bool instrumental);// 提交人声分离/伴奏提取任务，输出到工作区版本目录（根未注入时落源目录）
-    void pipeline(const QString& inPath, const QString& stepsJson);// 提交管线一键任务（FR-9 D8，占 busy；worker 解析 stepsJson、模型步两级缺省解析后组 pipeline 请求）
+    void extractAudio(const QString& inPath, int track = -1);// 提交音轨提取任务（FR-1 track 尾参：≥0 选定容器内音频流绝对索引）
+    void extractVideo(const QString& inPath);// 提交无声视频提取任务（FR-1：无轨参）
+    void denoiseWav(const QString& inPath, HumBase humBase, bool removeWind, int track = -1);// 提交降噪任务，输出到工作区版本目录（根未注入时落源目录）；FR-1 track 尾参
+    void denoiseAiWav(const QString& inPath, bool quality = false, int track = -1);// 提交 AI 降噪任务（FR-4 档位随行；缺省快速档 = 旧单参调用面零漂移；FR-1 track 尾参），输出到工作区版本目录（根未注入时落源目录）
+    void pitchWav(const QString& inPath, double semiTones, int track = -1);// 提交变调任务，输出到工作区版本目录（根未注入时落源目录）；FR-1 track 尾参
+    void sepVocals(const QString& inPath, bool instrumental, int track = -1);// 提交人声分离/伴奏提取任务，输出到工作区版本目录（根未注入时落源目录）；FR-1 track 尾参
+    void pipeline(const QString& inPath, const QString& stepsJson, int track = -1);// 提交管线一键任务（FR-9 D8，占 busy；worker 解析 stepsJson、模型步两级缺省解析后组 pipeline 请求；FR-1 track 尾参=源头文件选轨）
     void batch(const QString& inputsJson, const QString& stepsJson);// 提交批处理任务（FR-10 D8，占 busy 整批一锁；worker 开工前模型解析——失败 batchFinished 先发（busy 毫秒级释放）再发 modelMissing 引导，附裁 1）
 };

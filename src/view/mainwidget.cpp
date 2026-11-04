@@ -68,7 +68,7 @@ MainWidget::MainWidget(QWidget* parent)
       btnOpen(nullptr), btnAudio(nullptr), btnVideo(nullptr),
       btnDenoise(nullptr), btnAi(nullptr), btnPitch(nullptr), btnSep(nullptr), btnInstrumental(nullptr), btnCancel(nullptr),
       btnWsChange(nullptr), btnHistory(nullptr), btnModels(nullptr),
-      chkHum(nullptr), cmbHumBase(nullptr), chkWind(nullptr), cmbAiTier(nullptr), spinSemi(nullptr),
+      chkHum(nullptr), cmbHumBase(nullptr), chkWind(nullptr), cmbAiTier(nullptr), spinSemi(nullptr), cmbTrack(nullptr),
       cmbPipeline(nullptr), btnPipeline(nullptr), btnBatch(nullptr),
       lblFile(nullptr), lblWs(nullptr), lblStatus(nullptr), txtInfo(nullptr), bar(nullptr),
       modelDlg(nullptr), modelTree(nullptr), modelBar(nullptr),
@@ -84,6 +84,7 @@ MainWidget::MainWidget(QWidget* parent)
 void MainWidget::build_ui() {
     btnOpen = new QPushButton(QStringLiteral("选择文件"), this);
     btnAudio = new QPushButton(QStringLiteral("提取音频"), this);
+    btnAudio->setObjectName(QStringLiteral("btnAudio"));// 探针锚（TRK-GUI busy 期任务按钮锁定对照组）
     btnVideo = new QPushButton(QStringLiteral("提取无声视频"), this);
     btnDenoise = new QPushButton(QStringLiteral("DSP降噪导出WAV"), this);
     btnAi = new QPushButton(QStringLiteral("AI降噪导出WAV"), this);
@@ -117,6 +118,9 @@ void MainWidget::build_ui() {
     spinSemi->setDecimals(1);
     spinSemi->setValue(0.0);
     spinSemi->setSuffix(QStringLiteral(" 半音"));
+    cmbTrack = new QComboBox(this);// 轨道下拉（FR-1）：文件属性位挂 topRow；探测 ≥2 音轨才显示（resetTrackCombo 建单条缺省项并隐藏）
+    cmbTrack->setObjectName(QStringLiteral("cmbTrack"));// 探针锚（TRK-GUI 断言：条目数/缺省选中/换文件重置）
+    resetTrackCombo();
     cmbPipeline = new QComboBox(this);// 管线预设下拉（FR-9）：条目 = 静态预设表（链形见 kPipePresets）
     cmbPipeline->setObjectName(QStringLiteral("cmbPipeline"));
     for (const auto& p : kPipePresets) cmbPipeline->addItem(QString::fromUtf8(p.name));
@@ -142,6 +146,7 @@ void MainWidget::build_ui() {
     btnModels = new QPushButton(QStringLiteral("模型管理…"), this);
     lblStatus = new QLabel(QStringLiteral("就绪"), this);
     txtInfo = new QPlainTextEdit(this);
+    txtInfo->setObjectName(QStringLiteral("txtInfo"));// 探针锚（TRK-GUI 文本展示零漂移断言）
     txtInfo->setReadOnly(true);
     txtInfo->setMaximumHeight(120);
     txtInfo->setPlaceholderText(QStringLiteral("文件流信息"));
@@ -163,6 +168,7 @@ void MainWidget::build_ui() {
     auto* topRow = new QHBoxLayout;
     topRow->addWidget(btnOpen);
     topRow->addWidget(lblFile, 1);
+    topRow->addWidget(cmbTrack);// 轨道下拉（FR-1 D5）：文件属性语义随文件行（非任务参数行），单轨文件隐藏 = 单轨 UI 零漂移
     auto* wsRow = new QHBoxLayout;// 工作区根展示/可改 + 处理历史 + 模型管理入口（D5 最小 UI 同排）
     wsRow->addWidget(lblWs, 1);
     wsRow->addWidget(btnWsChange);
@@ -233,6 +239,7 @@ void MainWidget::setMediaService(MediaService* svc) {
         connect(media, &MediaService::progress, this, &MainWidget::onProgress);
         connect(media, &MediaService::jobFinished, this, &MainWidget::onJobDone);
         connect(media, &MediaService::probeFinished, this, &MainWidget::onProbeDone);
+        connect(media, &MediaService::probeInfoFinished, this, &MainWidget::onProbeInfoDone);// FR-1：结构化探测落地（建轨道下拉）
         connect(media, &MediaService::wsInfoFinished, this, &MainWidget::onWsInfoDone);
         connect(media, &MediaService::modelListFinished, this, &MainWidget::onModelListDone);// FR-8 片 B
         connect(media, &MediaService::modelOpFinished, this, &MainWidget::onModelOpDone);
@@ -243,9 +250,20 @@ void MainWidget::setMediaService(MediaService* svc) {
     }
 }
 
+// 轨道下拉重置（FR-1 D5）：清回单条「自动（默认音轨）」并隐藏。openFile 同步调用——probeInfoDone
+// 异步晚到（用户极早期点任务 → 下拉未建 → trackValue 取「自动」，无害），真正的坑是换文件未重置
+// （旧文件 track=3 对新文件即越界），故重置不等异步探测、失败探测同样清空（不留旧文件轨）
+void MainWidget::resetTrackCombo() {
+    cmbTrack->clear();
+    cmbTrack->addItem(QStringLiteral("自动（默认音轨）"), -1);// 缺省项 = 组包不带 track 键（best-stream 零漂移，不偷换「音轨 0」）
+    cmbTrack->setCurrentIndex(0);
+    cmbTrack->hide();
+}
+
 void MainWidget::openFile(const QString& path) {
     curFile = path;
     lblFile->setText(QFileInfo(path).fileName());
+    resetTrackCombo();// 同步重置「自动」（FR-1 D5：防跨文件 stale 索引，不等异步 probeInfoDone）
     if (!taskRunning) {// 任务运行中不解禁：wsInfo 迟到弹窗里「用此版本继续」不得击穿 busy 锁（按钮由 set_busy(false) 统一恢复），probe 排队任务后照常执行
         btnAudio->setEnabled(true);
         btnVideo->setEnabled(true);
@@ -299,6 +317,45 @@ void MainWidget::doHistory() {
 void MainWidget::onProbeDone(bool ok, const QString& info) {
     txtInfo->setPlainText(info);
     lblStatus->setText(ok ? QStringLiteral("已载入，可执行分离") : QStringLiteral("读取失败"));
+}
+
+// 结构化探测落地（FR-1 D5）：据 probe result 的 audio 流清单建轨道下拉——≥2 音轨才显示
+//（单轨隐藏 = 单轨 UI 零漂移，OQ-2 拍板「隐藏」）；条目标签从 ProbeStream 渲染（语言/标题/
+// 缺省旗标有则显示）；失败/无音轨 → resetTrackCombo 清空（openFile 已重置过，双保险防迟到旧文件轨）
+void MainWidget::onProbeInfoDone(bool ok, const QString& json) {
+    if (!ok) {
+        resetTrackCombo();
+        return;
+    }
+    const QJsonObject result = QJsonDocument::fromJson(json.toUtf8()).object();
+    const QJsonArray streams = result.value(QStringLiteral("streams")).toArray();
+    QJsonArray audio;// 音频流按流序入下拉（itemData = 容器内绝对流索引，与 track 参数同域）
+    for (const QJsonValue& v : streams) {
+        const QJsonObject s = v.toObject();
+        if (s.value(QStringLiteral("type")).toString() == QStringLiteral("audio")) audio.append(s);
+    }
+    if (audio.size() < 2) {
+        resetTrackCombo();
+        return;
+    }
+    cmbTrack->clear();
+    cmbTrack->addItem(QStringLiteral("自动（默认音轨）"), -1);
+    for (const QJsonValue& v : audio) {
+        const QJsonObject s = v.toObject();
+        QString label = QStringLiteral("流#%1").arg(s.value(QStringLiteral("index")).toInt());
+        const QString language = s.value(QStringLiteral("language")).toString();
+        const QString title = s.value(QStringLiteral("title")).toString();
+        if (!language.isEmpty()) label += QStringLiteral(" · %1").arg(language);
+        if (!title.isEmpty()) label += QStringLiteral(" · %1").arg(title);
+        label += QStringLiteral(" · %1 · %2Hz · %3ch")
+                     .arg(s.value(QStringLiteral("codec")).toString())
+                     .arg(s.value(QStringLiteral("sampleRate")).toInt())
+                     .arg(s.value(QStringLiteral("channels")).toInt());
+        if (s.value(QStringLiteral("defaultTrack")).toBool()) label += QStringLiteral(" · 默认");
+        cmbTrack->addItem(label, s.value(QStringLiteral("index")).toInt());
+    }
+    cmbTrack->setCurrentIndex(0);// 缺省「自动」（不预标 best-stream 将选哪轨——自估即幻觉，D5 对抗 1.2）
+    cmbTrack->show();
 }
 
 // 处理历史落地（D5 最小 UI）：wsInfo result 渲染版本清单对话框（序号/时间/动词/参数摘要/输出路径）
@@ -814,7 +871,7 @@ void MainWidget::doExtractAudio() {
     if (!media || curFile.isEmpty()) return;
     set_busy(true);
     lblStatus->setText(QStringLiteral("正在提取音频…"));
-    media->extractAudio(curFile);
+    media->extractAudio(curFile, trackValue());// FR-1：轨参随行（「自动」= -1 = 不组键零漂移）
 }
 
 void MainWidget::doExtractVideo() {
@@ -835,7 +892,7 @@ void MainWidget::doDenoiseWav() {
                         : cmbHumBase->currentIndex() == 1 ? HumBase::Hz60 : HumBase::Hz50;
     set_busy(true);
     lblStatus->setText(QStringLiteral("正在降噪并导出 WAV…"));
-    media->denoiseWav(curFile, humBase, chkWind->isChecked());
+    media->denoiseWav(curFile, humBase, chkWind->isChecked(), trackValue());// FR-1：轨参随行
 }
 
 // 当前 AI 降噪档位对应动词（FR-4）：七槽（doDenoiseAiWav）、管线预设步、批处理动作三面组包
@@ -845,13 +902,22 @@ QString MainWidget::aiVerb() const {
                                                        : QStringLiteral("aiDenoise");
 }
 
+// 当前轨道下拉取值（FR-1 D5）：缺省项「自动」= -1 = 组包不带 track 键（best-stream 语义零漂移）；
+// 七槽（extractVideo 除外，其拒收 track）与管线一键单源取值（aiVerb 先例）。下拉未建/隐藏时
+// 恒 -1（QComboBox 无选中 currentData 无效值 → 缺省 -1）
+int MainWidget::trackValue() const {
+    if (!cmbTrack) return -1;
+    const QVariant d = cmbTrack->currentData();
+    return d.isValid() ? d.toInt() : -1;// clear() 后 addItem 前的瞬态无效值按「自动」
+}
+
 void MainWidget::doDenoiseAiWav() {
     if (!media || curFile.isEmpty()) return;
     const bool quality = cmbAiTier && cmbAiTier->currentIndex() == 1;
     set_busy(true);
     lblStatus->setText(quality ? QStringLiteral("AI 降噪（质量档）中…")
                                : QStringLiteral("AI 降噪中…"));
-    media->denoiseAiWav(curFile, quality);
+    media->denoiseAiWav(curFile, quality, trackValue());// FR-1：轨参随行
 }
 
 void MainWidget::doPitchWav() {
@@ -863,21 +929,21 @@ void MainWidget::doPitchWav() {
     }
     set_busy(true);
     lblStatus->setText(QStringLiteral("正在变调（%1 半音）…").arg(semi));
-    media->pitchWav(curFile, semi);
+    media->pitchWav(curFile, semi, trackValue());// FR-1：轨参随行
 }
 
 void MainWidget::doSepVocals() {
     if (!media || curFile.isEmpty()) return;
     set_busy(true);
     lblStatus->setText(QStringLiteral("人声分离中（CPU 推理较慢）…"));
-    media->sepVocals(curFile, false);
+    media->sepVocals(curFile, false, trackValue());// FR-1：轨参随行
 }
 
 void MainWidget::doSepInstrumental() {
     if (!media || curFile.isEmpty()) return;
     set_busy(true);
     lblStatus->setText(QStringLiteral("伴奏提取中（CPU 推理较慢）…"));
-    media->sepVocals(curFile, true);
+    media->sepVocals(curFile, true, trackValue());// FR-1：轨参随行
 }
 
 // 管线一键（FR-9）：链形取预设表，动态参数取当前面板（denoise 步 humBase 跟随下拉/wind 跟随勾选、
@@ -907,7 +973,8 @@ void MainWidget::doPipeline() {
     }
     set_busy(true);
     lblStatus->setText(QStringLiteral("管线处理中（共 %1 步）…").arg(steps.size()));
-    media->pipeline(curFile, QString::fromUtf8(QJsonDocument(steps).toJson(QJsonDocument::Compact)));
+    media->pipeline(curFile, QString::fromUtf8(QJsonDocument(steps).toJson(QJsonDocument::Compact)),
+                    trackValue());// FR-1：轨参随行（命令层仅注步 1 源头文件选轨）
 }
 
 void MainWidget::doCancel() {

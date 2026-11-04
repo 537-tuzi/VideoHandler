@@ -22,8 +22,10 @@ extern "C" {
 
 namespace {
 
-// 打开输入并定位指定类型流，失败时已保证关闭输入
-ErrInfo open_input(const QString& inPath, AVFormatContext** fmt, AVMediaType type, int* streamIdx) {
+// 打开输入并定位指定类型流，失败时已保证关闭输入；track（FR-1）仅音频提取路径有意义（视频提取
+// 动词拒收 track，缺省 -1 不参与），选轨统一走 resolveAudioStream 单源
+ErrInfo open_input(const QString& inPath, AVFormatContext** fmt, AVMediaType type, int* streamIdx,
+                   int track = -1) {
     int ret = avformat_open_input(fmt, inPath.toUtf8().constData(), nullptr, nullptr);
     if (ret < 0) return {ErrCode::File, QStringLiteral("打不开文件：%1").arg(ff_err(ret))};
     ret = avformat_find_stream_info(*fmt, nullptr);
@@ -31,9 +33,12 @@ ErrInfo open_input(const QString& inPath, AVFormatContext** fmt, AVMediaType typ
         avformat_close_input(fmt);
         return {ErrCode::File, QStringLiteral("读不到流信息：%1").arg(ff_err(ret))};
     }
-    ret = av_find_best_stream(*fmt, type, -1, -1, nullptr, 0);
+    ErrInfo tErr;
+    if (type == AVMEDIA_TYPE_AUDIO) ret = resolveAudioStream(*fmt, track, &tErr);
+    else ret = av_find_best_stream(*fmt, type, -1, -1, nullptr, 0);
     if (ret < 0) {
         avformat_close_input(fmt);
+        if (!tErr.isEmpty()) return tErr;// track≥0 的越界/非音频流（产生点已赋码）
         return {ErrCode::File,
                 type == AVMEDIA_TYPE_AUDIO ? QStringLiteral("文件里没有音频流")
                                            : QStringLiteral("文件里没有视频流")};
@@ -300,12 +305,65 @@ bool FFExtractor::probeInfo(const QString& inPath, ProbeInfo* info, QString* err
             if (par->codec_type == AVMEDIA_TYPE_AUDIO) {
                 s.sampleRate = par->sample_rate;
                 s.channels = par->ch_layout.nb_channels;
+                // 轨道辅助信息（FR-1 D2）：language/title 取流元数据、defaultTrack 取 disposition
+                // 旗标——供轨道下拉渲染与 Agent 决策，不作寻址键（寻址恒为绝对流索引）。
+                // 归一化两点（round-1 素材实证，否则 ci-smoke 基线素材 tiny.mp4（mp4 封装器对未指定
+                // 语言/旗标全打 language=und + default=1）响应增键破 TRK-001 逐字节零漂移门）：
+                // ① language="und"（ISO 639 未定语种，封装器未指定时的缺省占位）视同无语言标签；
+                // ② default 旗标全员命中（全体音轨都被打 default，mp4 封装器缺省行为）不构成
+                //    「评分序首位」的区分信息（D2 语义 = best-stream 将偏好的轨），视同无旗标
+                const AVDictionaryEntry* lang = av_dict_get(in->streams[i]->metadata, "language", nullptr, 0);
+                if (lang && qstricmp(lang->value, "und") != 0)
+                    s.language = QString::fromUtf8(lang->value);
+                const AVDictionaryEntry* title = av_dict_get(in->streams[i]->metadata, "title", nullptr, 0);
+                if (title) s.title = QString::fromUtf8(title->value);
+                s.hasDefaultFlag = (in->streams[i]->disposition & AV_DISPOSITION_DEFAULT) != 0;
             }
             info->streams.append(s);
         }
+        int audioCount = 0, flaggedCount = 0;
+        for (const ProbeStream& s : info->streams)
+            if (s.mediaType == QStringLiteral("audio")) {
+                ++audioCount;
+                if (s.hasDefaultFlag) ++flaggedCount;
+            }
+        if (audioCount > 0 && flaggedCount < audioCount)// 旗标有区分度才落 defaultTrack（全命中=无信息）
+            for (ProbeStream& s : info->streams)
+                if (s.hasDefaultFlag) s.defaultTrack = true;
     }
     avformat_close_input(&in);
     return true;
+}
+
+// 结构化信息 → 命令层 probe result（FR-1 D5 单源：cmdProbe 与 doProbe 双发射共用，从 cmdProbe
+// 原组装逐字平移 + 音频流条件插键 language/title/defaultTrack——空/假不插，无元数据老素材的
+// probe 响应逐字节零漂移）
+QJsonObject FFExtractor::probeJson(const ProbeInfo& info) {
+    QJsonObject result;
+    result.insert(QStringLiteral("container"), info.container);
+    result.insert(QStringLiteral("sizeBytes"), info.sizeBytes);
+    result.insert(QStringLiteral("durationSec"),
+                  info.durationUs > 0 ? QJsonValue(info.durationUs / 1000000.0) : QJsonValue());
+    QJsonArray streams;
+    for (const ProbeStream& s : info.streams) {
+        QJsonObject o;
+        o.insert(QStringLiteral("index"), s.index);
+        o.insert(QStringLiteral("type"), s.mediaType);
+        o.insert(QStringLiteral("codec"), s.codec);
+        if (s.mediaType == QStringLiteral("video")) {
+            o.insert(QStringLiteral("width"), s.width);
+            o.insert(QStringLiteral("height"), s.height);
+        } else if (s.mediaType == QStringLiteral("audio")) {
+            o.insert(QStringLiteral("sampleRate"), s.sampleRate);
+            o.insert(QStringLiteral("channels"), s.channels);
+            if (!s.language.isEmpty()) o.insert(QStringLiteral("language"), s.language);
+            if (!s.title.isEmpty()) o.insert(QStringLiteral("title"), s.title);
+            if (s.defaultTrack) o.insert(QStringLiteral("defaultTrack"), true);
+        }
+        streams.append(o);
+    }
+    result.insert(QStringLiteral("streams"), streams);
+    return result;
 }
 
 QString FFExtractor::probeText(const ProbeInfo& info) {
@@ -344,7 +402,8 @@ bool FFExtractor::probe(const QString& inPath, QString* info) {
 }
 
 QString FFExtractor::extractAudio(const QString& inPath, ErrInfo* err, const std::function<void(int)>& onProgress,
-                                  const std::atomic<bool>* cancel, const QString& outPath, const QString& outDir) {
+                                  const std::atomic<bool>* cancel, const QString& outPath, const QString& outDir,
+                                  int track) {
     ErrInfo e;
     AVFormatContext* in = nullptr;
     AVFormatContext* out = nullptr;
@@ -352,15 +411,19 @@ QString FFExtractor::extractAudio(const QString& inPath, ErrInfo* err, const std
     int idx = -1;
 
     do {
-        e = open_input(inPath, &in, AVMEDIA_TYPE_AUDIO, &idx);
+        e = open_input(inPath, &in, AVMEDIA_TYPE_AUDIO, &idx, track);
         if (!e.isEmpty()) break;
         QFileInfo fi(inPath);
         // 显式路径在输入成功打开后才落位：失败路径绝不误删既有文件；
-        // 缺省命名规则仍是底座单一来源，outDir 非空时原样跑在该目录内（FR-A4 工作区只给目录不给文件名）
+        // 缺省命名规则仍是底座单一来源，outDir 非空时原样跑在该目录内（FR-A4 工作区只给目录不给文件名）。
+        // FR-1 OQ-4 拍板：显式 track 时缺省名插 _t<N> 轨标记——同文件不同轨是不同产物，不加段则
+        // 「轨 0 → 轨 1」二次提取同名静默覆盖（avio_open 截断）成新引入的数据丢失面；无 track 逐字节不变
         if (!outPath.isEmpty()) path = outPath;
         else {
             const QString dir = outDir.isEmpty() ? fi.absolutePath() : outDir;
-            path = dir + "/" + fi.completeBaseName() + kSuffixAudio + audio_ext(in->streams[idx]->codecpar->codec_id);
+            const QString stem = fi.completeBaseName()
+                               + (track >= 0 ? QStringLiteral("_t%1").arg(track) : QString());
+            path = dir + "/" + stem + kSuffixAudio + audio_ext(in->streams[idx]->codecpar->codec_id);
         }
         e = open_output(&out, path);
         if (!e.isEmpty()) break;
@@ -406,10 +469,21 @@ QString FFExtractor::extractVideo(const QString& inPath, ErrInfo* err, const std
     return finish(e, &out, &in, &path, err);
 }
 
+// 后台探测（FR-1 D5 单遍双发射）：probeDone 文本逐字零漂移（probeInfo → probeText 与旧 probe()
+// 同源同文），加发 probeInfoDone 结构化 JSON（probeJson 单源）供轨道下拉构建；失败发 false + 空
+// 串——下拉不建/清空，不留旧文件轨
 void FFExtractor::doProbe(const QString& inPath) {
-    QString info;
-    bool ok = probe(inPath, &info);
-    emit probeDone(ok, info);
+    ProbeInfo pi;
+    QString err;
+    const bool ok = probeInfo(inPath, &pi, &err);
+    if (ok) {
+        emit probeDone(true, probeText(pi));
+        emit probeInfoDone(true, QString::fromUtf8(
+            QJsonDocument(probeJson(pi)).toJson(QJsonDocument::Compact)));
+    } else {
+        emit probeDone(false, err);
+        emit probeInfoDone(false, QString());
+    }
 }
 
 // 统一命令层收尾（FR-24 片 D，spec D6）：组好的请求交 execute，取消标志/进度回调经 Ctx 注入；
@@ -451,7 +525,7 @@ void FFExtractor::runRequest(const QJsonObject& req, const QString& okMsg) {
     }
 }
 
-void FFExtractor::doDenoiseWav(const QString& inPath, HumBase humBase, bool removeWind) {
+void FFExtractor::doDenoiseWav(const QString& inPath, HumBase humBase, bool removeWind, int track) {
     QJsonObject req;
     req.insert(QStringLiteral("cmd"), QStringLiteral("denoise"));
     req.insert(QStringLiteral("input"), inPath);
@@ -460,11 +534,12 @@ void FFExtractor::doDenoiseWav(const QString& inPath, HumBase humBase, bool remo
                                         : humBase == HumBase::Off ? QStringLiteral("off")
                                                                   : QStringLiteral("50"));
     req.insert(QStringLiteral("wind"), removeWind);
+    if (track >= 0) req.insert(QStringLiteral("track"), track);// FR-1：缺省 -1 不组键 = best-stream 零漂移
     // 工作点跟随源（48k 全链免重采样）与 off+off 拒绝均由命令层承担（GUI 侧另有前置拒绝，纵深防御）
     runRequest(req, QStringLiteral("降噪完成"));
 }
 
-void FFExtractor::doDenoiseAiWav(const QString& inPath, bool quality) {
+void FFExtractor::doDenoiseAiWav(const QString& inPath, bool quality, int track) {
     // GUI 壳缺省解析两级化（FR-8 片 B，D1）：模型库该用途已装 → appDir bundled；命令层 model
     // 必填，槽内先解析路径再组 model 字段。两级皆缺时文案逐字不动（GUI-EQV 锁定，%1 仍显示
     // appDir bundled 路径——随包分发是缺省安装形态，库路径此刻不存在），并加发 modelMissing
@@ -485,20 +560,22 @@ void FFExtractor::doDenoiseAiWav(const QString& inPath, bool quality) {
     req.insert(QStringLiteral("cmd"), verb);
     req.insert(QStringLiteral("input"), inPath);
     req.insert(QStringLiteral("model"), model);
+    if (track >= 0) req.insert(QStringLiteral("track"), track);// FR-1：缺省 -1 不组键 = best-stream 零漂移
     // 快速档工作点锁 16k 单声道、输出锁兜底规格（lockCanonical）；质量档 48k 单声道但输出跟随源
     //（NFR-Q3 首个 AI 引擎，注册表 lockCanonicalOutput=false）——均由命令层承担
     runRequest(req, quality ? QStringLiteral("AI 降噪（质量档）完成") : QStringLiteral("AI 降噪完成"));
 }
 
-void FFExtractor::doPitchWav(const QString& inPath, double semiTones) {
+void FFExtractor::doPitchWav(const QString& inPath, double semiTones, int track) {
     QJsonObject req;
     req.insert(QStringLiteral("cmd"), QStringLiteral("pitch"));
     req.insert(QStringLiteral("input"), inPath);
     req.insert(QStringLiteral("semi"), semiTones);// GUI 已拒 0/越界（mainwidget），命令层校验为纵深防御
+    if (track >= 0) req.insert(QStringLiteral("track"), track);// FR-1：缺省 -1 不组键 = best-stream 零漂移
     runRequest(req, QStringLiteral("变调完成（%1 半音）").arg(semiTones));
 }
 
-void FFExtractor::doSepVocals(const QString& inPath, bool instrumental) {
+void FFExtractor::doSepVocals(const QString& inPath, bool instrumental, int track) {
     // 同 doDenoiseAiWav：两级缺省解析（FR-8 片 B）+ GUI 文案留在壳（逐字不动），命令层拿显式 model
     const QString bundled = QCoreApplication::applicationDirPath() + "/" + kSepModelRelPath;
     const QString model = resolveDefaultModel(QStringLiteral("separate"), bundled);
@@ -513,14 +590,16 @@ void FFExtractor::doSepVocals(const QString& inPath, bool instrumental) {
     req.insert(QStringLiteral("model"), model);
     req.insert(QStringLiteral("stem"), instrumental ? QStringLiteral("instrumental")
                                                     : QStringLiteral("vocals"));
+    if (track >= 0) req.insert(QStringLiteral("track"), track);// FR-1：缺省 -1 不组键 = best-stream 零漂移
     // MDX 工作点锁 44.1k 立体声，输出锁兜底规格（spec §2 有意保留）；双 stem 后缀/文案由 instrumental 决定
     runRequest(req, instrumental ? QStringLiteral("伴奏提取完成") : QStringLiteral("人声分离完成"));
 }
 
-void FFExtractor::doExtractAudio(const QString& inPath) {
+void FFExtractor::doExtractAudio(const QString& inPath, int track) {
     QJsonObject req;
     req.insert(QStringLiteral("cmd"), QStringLiteral("extractAudio"));
     req.insert(QStringLiteral("input"), inPath);// 不传 output：缺省自动命名与现状同规则（底座源目录后缀规则）
+    if (track >= 0) req.insert(QStringLiteral("track"), track);// FR-1：缺省 -1 不组键；显式轨时底座缺省名插 _t<N> 段
     runRequest(req, QStringLiteral("音轨提取完成"));
 }
 
@@ -571,7 +650,7 @@ bool FFExtractor::resolveStepModels(QJsonArray* steps, QString* missingVerb, QSt
 // 壳只做两件事——解析数组、模板模型步两级缺省解析（resolveStepModels 共享段）；此后组
 // pipeline 请求走统一 runRequest，schema/静态预校验/链式执行全部由命令层承担。两级皆缺时
 // 文案/信号同单槽形态（jobDone 文案 + modelMissing(动词) 引导，附裁 1 用途不漂）
-void FFExtractor::doPipeline(const QString& inPath, const QString& stepsJson) {
+void FFExtractor::doPipeline(const QString& inPath, const QString& stepsJson, int track) {
     QJsonParseError pe{};
     const QJsonDocument doc = QJsonDocument::fromJson(stepsJson.toUtf8(), &pe);
     if (pe.error != QJsonParseError::NoError || !doc.isArray()) {
@@ -589,6 +668,7 @@ void FFExtractor::doPipeline(const QString& inPath, const QString& stepsJson) {
     req.insert(QStringLiteral("cmd"), QStringLiteral("pipeline"));
     req.insert(QStringLiteral("input"), inPath);
     req.insert(QStringLiteral("steps"), steps);
+    if (track >= 0) req.insert(QStringLiteral("track"), track);// FR-1：顶层轨参仅作用于步 1 源解码（命令层注步 1）
     runRequest(req, QStringLiteral("管线完成"));// 成功文案「管线完成：<终产物路径>」（附裁 5，runRequest 拼 output）
 }
 

@@ -25,7 +25,8 @@ void normalizeOutSpec(int rate, int channels, int* outRate, int* outChannels) {
 }
 
 // 打开输入、定位音轨并起解码器，失败时已保证释放
-ErrInfo open_decoder(const QString& inPath, AVFormatContext** fmt, AVCodecContext** dec, int* streamIdx) {
+ErrInfo open_decoder(const QString& inPath, AVFormatContext** fmt, AVCodecContext** dec, int* streamIdx,
+                     int track = -1) {
     int ret = avformat_open_input(fmt, inPath.toUtf8().constData(), nullptr, nullptr);
     if (ret < 0) return {ErrCode::File, QStringLiteral("打不开文件：%1").arg(ff_err(ret))};
     ret = avformat_find_stream_info(*fmt, nullptr);
@@ -33,10 +34,11 @@ ErrInfo open_decoder(const QString& inPath, AVFormatContext** fmt, AVCodecContex
         avformat_close_input(fmt);
         return {ErrCode::File, QStringLiteral("读不到流信息：%1").arg(ff_err(ret))};
     }
-    ret = av_find_best_stream(*fmt, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    ErrInfo tErr;
+    ret = resolveAudioStream(*fmt, track, &tErr);
     if (ret < 0) {
         avformat_close_input(fmt);
-        return {ErrCode::File, QStringLiteral("文件里没有音频流")};
+        return tErr.isEmpty() ? ErrInfo{ErrCode::File, QStringLiteral("文件里没有音频流")} : tErr;
     }
     *streamIdx = ret;
     const AVCodec* codec = avcodec_find_decoder((*fmt)->streams[*streamIdx]->codecpar->codec_id);
@@ -113,26 +115,44 @@ ErrInfo write_samples(const uint8_t* data, int frames, int channels, AVFormatCon
 
 }// namespace
 
-void FFTranscoder::probeSourceSpec(const QString& inPath, int* rate, int* channels) {
+bool FFTranscoder::probeSourceSpec(const QString& inPath, int* rate, int* channels, int track, ErrInfo* err) {
     AVFormatContext* fmt = nullptr;
     int srcRate = 0;
     int srcChannels = 0;
-    do {// 只开容器读音轨参数即关：探测失败不拦任务（后续 open_decoder 会给出正式报错），回落兜底规格
-        if (avformat_open_input(&fmt, inPath.toUtf8().constData(), nullptr, nullptr) < 0) break;
-        if (avformat_find_stream_info(fmt, nullptr) < 0) break;
-        const int idx = av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
-        if (idx < 0) break;
+    ErrInfo hard;// track≥0 硬失败出口（FR-1 D4 fail-fast）：不可解析即带 ErrInfo 返回 false
+    do {// 只开容器读音轨参数即关；track<0 时探测失败不拦任务（后续 open_decoder 会给出正式报错），回落兜底规格
+        int ret = avformat_open_input(&fmt, inPath.toUtf8().constData(), nullptr, nullptr);
+        if (ret < 0) {
+            if (track >= 0) hard = {ErrCode::File, QStringLiteral("打不开文件：%1").arg(ff_err(ret))};
+            break;
+        }
+        ret = avformat_find_stream_info(fmt, nullptr);
+        if (ret < 0) {
+            if (track >= 0) hard = {ErrCode::File, QStringLiteral("读不到流信息：%1").arg(ff_err(ret))};
+            break;
+        }
+        ErrInfo tErr;
+        const int idx = resolveAudioStream(fmt, track, &tErr);
+        if (idx < 0) {
+            if (track >= 0) hard = tErr;// track<0 走「文件里没有音频流」的原式静默回落（tErr 必空）
+            break;
+        }
         srcRate = fmt->streams[idx]->codecpar->sample_rate;
         srcChannels = fmt->streams[idx]->codecpar->ch_layout.nb_channels;
     } while (false);
     if (fmt) avformat_close_input(&fmt);
+    if (!hard.isEmpty()) {
+        if (err) *err = hard;
+        return false;
+    }
     normalizeOutSpec(srcRate, srcChannels, rate, channels);
+    return true;
 }
 
 QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& outPath,
                                          IStreamEngine& engine, const std::atomic<bool>* cancel,
                                          ErrInfo* err, const ProgressFn& onProgress,
-                                         int outRate, int outChannels, OutInfo* outInfo) {
+                                         int outRate, int outChannels, OutInfo* outInfo, int track) {
     ErrInfo e;
     AVFormatContext* in = nullptr;
     AVCodecContext* dec = nullptr;
@@ -147,7 +167,7 @@ QString FFTranscoder::transcodeStreamWav(const QString& inPath, const QString& o
     bool bypassOut = false;
 
     do {
-        e = open_decoder(inPath, &in, &dec, &idx);
+        e = open_decoder(inPath, &in, &dec, &idx, track);// 选轨点（FR-1）：与 probeSourceSpec 同走 resolveAudioStream 同值
         if (!e.isEmpty()) break;
         srcRate = dec->sample_rate;
         srcChannels = dec->ch_layout.nb_channels;

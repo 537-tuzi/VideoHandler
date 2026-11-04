@@ -5,7 +5,11 @@
 // 批处理对话框（FR-10：清单多选 + 动作组合 = 5 引擎动词 + 3 管线预设，无 transcode（OQ-6），
 // 整批 busy 一锁，完成逐件渲染 + 汇总「批处理完成：k/N 件成功」，「已取消」静默（附裁 5））+
 // AI 降噪档位下拉（FR-4：快速（GTCRN）/质量（DeepFilterNet3），QSettings 记忆缺省快速——
-// 七槽/管线步/批处理动作三面组包同源取 aiVerb()）。
+// 七槽/管线步/批处理动作三面组包同源取 aiVerb()）+
+// 轨道下拉 cmbTrack（FR-1：onProbeInfoDone 据 probe result 建、≥2 音轨才显示、缺省项
+// 「自动（默认音轨）」= 不带 track 键；openFile 同步重置「自动」防跨文件 stale 索引；
+// 不进 QSettings（track 是文件级属性非用户偏好）；busy 期不锁——面板动态态族（aiVerb 同型）；
+// 七槽（extractVideo 除外）/管线组包经 trackValue() 单源注入）。
 // QSettings 只在本层（GUI 线程）读写（D7 边界）：工作区根读入后经 MediaService 下传 worker，
 // 七槽任务缺省走工作区（无开关硬切，OQ-2 拍板），历史对话框数据来自 worker 线程的 wsInfo 查询；
 // 模型库根/下载源 endpoint 同型承载（FR-8 D1/D4：modelRoot/modelEndpoint 两键，缺省根
@@ -53,6 +57,7 @@ public slots:
     void onProgress(int pct);// 刷新进度条
     void onJobDone(bool ok, const QString& msg);// 任务结果落地
     void onProbeDone(bool ok, const QString& info);// 探测结果落地
+    void onProbeInfoDone(bool ok, const QString& json);// 结构化探测落地（FR-1：建/清轨道下拉，≥2 音轨才显示）
     void onWsInfoDone(bool ok, const QString& json);// 处理历史查询落地（渲染版本清单对话框）
     void onModelListDone(bool ok, const QString& json);// 模型列表落地（渲染模型管理对话框表格）
     void onModelOpDone(bool ok, const QString& message);// 模型下载/导入落地（放锁 + 刷新列表）
@@ -68,6 +73,8 @@ private:
     void set_busy(bool on);// 任务期间锁按钮并显隐进度条
     void openFile(const QString& path);// 载入文件并异步刷新流信息（doOpen 与「用此版本继续」共用，OQ-3）
     QString aiVerb() const;// 当前 AI 降噪档位对应动词（FR-4：快速 aiDenoise / 质量 aiDenoiseHq——七槽/管线/批处理三面组包同源取值）
+    int trackValue() const;// 当前轨道下拉取值（FR-1：缺省项「自动」= -1 = 组包不带 track 键；七槽（extractVideo 除外）/管线单源取值）
+    void resetTrackCombo();// 轨道下拉重置单条「自动（默认音轨）」并隐藏（openFile 换文件同步重置 + 探测失败清空，防跨文件 stale 索引）
     MediaService* media;// 媒体服务，组合根 setter 初始化
     QString curFile;// 当前已载入文件路径
     QString workspaceRoot;// 工作区根（QSettings 读入，缺省 ~/VideoHandler-Workspace，FR-A4 OQ-1）
@@ -90,6 +97,7 @@ private:
     QCheckBox* chkWind;
     QComboBox* cmbAiTier = nullptr;// AI 降噪档位（FR-4：快速（GTCRN）/质量（DeepFilterNet3），QSettings 记忆缺省快速）
     QDoubleSpinBox* spinSemi;
+    QComboBox* cmbTrack = nullptr;// 轨道下拉（FR-1：topRow 文件属性位；缺省项「自动（默认音轨）」itemData=-1，音轨条目 itemData=流绝对索引；探测 ≥2 音轨才显示）
     QComboBox* cmbPipeline;// 管线预设下拉（FR-9，三条静态预设）
     QPushButton* btnPipeline;// 一键执行管线（FR-9，占 busy；成功文案「管线完成：<终产物路径>」）
     QPushButton* btnBatch;// 批处理入口（FR-10，非文件依赖——清单在对话框内自选，初始可用）

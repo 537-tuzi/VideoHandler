@@ -14,6 +14,7 @@
 #include <QList>
 #include <QStringList>
 
+#include <cmath>
 #include <exception>
 #include <functional>
 #include <memory>
@@ -50,6 +51,17 @@ QString optionalString(const QJsonObject& req, const char* key, QString* out) {
 }
 
 QString reqCmd(const QJsonObject& req) { return req.value(QStringLiteral("cmd")).toString(); }
+
+// 信封轨参取值（FR-1 D3）：无键 = -1（best-stream 缺省，键缺席必须先于取值判断——undefined 的
+// toDouble() 恒 0.0，直接取值会把不带 track 的请求静默变成显式 track 0）。类型/负值校验已在
+// execute 信封段完成，此处仅提取。超 int 范围的合法整数（JSON double 可表）饱和到 INT_MAX——
+// 交 resolveAudioStream 报「超出流范围」（E_FILE），而非 toInt 溢出回落静默按缺省轨跑
+int trackOf(const QJsonObject& req) {
+    const QJsonValue v = req.value(QStringLiteral("track"));
+    if (!v.isDouble()) return -1;
+    const double d = v.toDouble();
+    return d >= 2147483647.0 ? 2147483647 : static_cast<int>(d);
+}
 
 // 动词允许的专有字段白名单由条目供给（EngineRegistry::isDeclaredParam，spec D2 硬约束 1）；
 // probe 无 output（探测无落盘语义，见内置动词表）
@@ -98,9 +110,10 @@ QJsonObject runTranscode(const QJsonObject& req, const Ctx& ctx, IStreamEngine& 
     FFTranscoder::OutInfo info;
     ErrInfo err;
     // lockCanonical：AI/分离路径输出锁兜底 44.1k 立体声（模型工作点，P0 #4 有意保留）
+    // track 尾传（FR-1）：与 runEngine 的 probeSourceSpec 同值（同一 req 的 trackOf）——选轨三点同轨
     const QString out = FFTranscoder::transcodeStreamWav(
         req.value(QStringLiteral("input")).toString(), outPath, engine, ctx.cancel, &err, ctx.onProgress,
-        lockCanonical ? kCanonicalRate : 0, lockCanonical ? kCanonicalChannels : 0, &info);
+        lockCanonical ? kCanonicalRate : 0, lockCanonical ? kCanonicalChannels : 0, &info, trackOf(req));
     if (out.isEmpty()) return errorResponse(cmd, errCodeText(err.code), err.message);
     return okResponse(cmd, transcodeResult(out, info, engine));
 }
@@ -155,28 +168,7 @@ QJsonObject cmdProbe(const QJsonObject& req, const Ctx&) {
     QString err;
     if (!FFExtractor::probeInfo(req.value(QStringLiteral("input")).toString(), &info, &err))
         return errorResponse(reqCmd(req), errCodeText(ErrCode::File), err);// 探测失败恒文件域（现状语义）
-    QJsonObject result;
-    result.insert(QStringLiteral("container"), info.container);
-    result.insert(QStringLiteral("sizeBytes"), info.sizeBytes);
-    result.insert(QStringLiteral("durationSec"),
-                  info.durationUs > 0 ? QJsonValue(info.durationUs / 1000000.0) : QJsonValue());
-    QJsonArray streams;
-    for (const ProbeStream& s : info.streams) {
-        QJsonObject o;
-        o.insert(QStringLiteral("index"), s.index);
-        o.insert(QStringLiteral("type"), s.mediaType);
-        o.insert(QStringLiteral("codec"), s.codec);
-        if (s.mediaType == QStringLiteral("video")) {
-            o.insert(QStringLiteral("width"), s.width);
-            o.insert(QStringLiteral("height"), s.height);
-        } else if (s.mediaType == QStringLiteral("audio")) {
-            o.insert(QStringLiteral("sampleRate"), s.sampleRate);
-            o.insert(QStringLiteral("channels"), s.channels);
-        }
-        streams.append(o);
-    }
-    result.insert(QStringLiteral("streams"), streams);
-    return okResponse(reqCmd(req), result);
+    return okResponse(reqCmd(req), FFExtractor::probeJson(info));// result 单源（FR-1 D5）：与 GUI doProbe 双发射共用，防双源漂移
 }
 
 // ---- 引擎路径静态校验段（FR-9 D3 从 runEngine 原样抽取：validateParams → semanticCheck → 模型存在性；
@@ -207,7 +199,14 @@ QJsonObject runEngine(const EngineEntry& entry, const QJsonObject& req, const Ct
     const QJsonObject chk = staticCheck(entry, req, &args);
     if (!chk.isEmpty()) return chk;
     int rate = 0, channels = 0;
-    FFTranscoder::probeSourceSpec(req.value(QStringLiteral("input")).toString(), &rate, &channels);// 工作点跟随源
+    // 选轨点 ①（FR-1 §7.1 拍板 C）：显式 track（≥0）不可解析（容器打不开/轨越界/非音频流）即硬失败
+    // E_FILE——静默回落兜底规格 = 按错误采样率 setup 引擎的静默错轨；fail-fast 位于 create 载模型与
+    // planVersion 全量哈希之前；track<0 静默回落兜底（现状零漂移）。trackOf 与 ② runTranscode →
+    // open_decoder 同值（同一 req），三点同轨
+    ErrInfo specErr;
+    if (!FFTranscoder::probeSourceSpec(req.value(QStringLiteral("input")).toString(), &rate, &channels,
+                                       trackOf(req), &specErr))
+        return errorResponse(cmd, errCodeText(specErr.code), specErr.message);
     QString createErr;
     std::unique_ptr<IStreamEngine> engine = entry.create(args, rate, channels, &createErr);
     if (!engine) {// setup 失败按条目 ErrCode 归类；None（create 永不失败的条目）落此为编程错误——断言拦开发期，Engine 兜底（片 A P2-1 同款防护）
@@ -359,6 +358,8 @@ QJsonObject cmdPipeline(const QJsonObject& req, const Ctx& ctx) {
         sub.insert(QStringLiteral("v"), 1);
         sub.insert(QStringLiteral("input"), input);
         sub.insert(QStringLiteral("workspace"), wsRoot);
+        if (i == 0 && req.contains(QStringLiteral("track")))// 顶层轨参仅注步 1（FR-1 D6）：只对源头文件
+            sub.insert(QStringLiteral("track"), req.value(QStringLiteral("track")));// 选轨——步 ≥2 的输入是单音轨 f32 WAV 无可选（contains 守卫：无键不插 Null）
         CommandLayer::Ctx subCtx;// 进度等分（D4/OQ-2(a)）：第 i 步（0 基）[0,100] 线性映到
         subCtx.cancel = ctx.cancel;// [i*100/total,(i+1)*100/total]，末步 100 即整链 100；cancel 原样传递
         subCtx.pipelineIndex = i + 1;
@@ -523,11 +524,13 @@ QString explicitOutput(const QJsonObject& req) {
 }
 
 // extract 族通用处理器：direct 模式与现状逐字节同路；workspace 模式传 outDir=版本目录（缺省命名规则
-// 仍是底座单一来源，工作区只给目录不给文件名，D4）；extract 无引擎参数，版本记录 params 为空对象
-using ExtractFn = QString (*)(const QString&, ErrInfo*, const std::function<void(int)>&,
-                              const std::atomic<bool>*, const QString&, const QString&);
+// 仍是底座单一来源，工作区只给目录不给文件名，D4）；版本记录 params 由调用方给定（extractVideo 恒
+// 空对象；extractAudio 带显式 track 时记 {"track":N}，无 track 空对象零漂移，FR-1 D3）
+using ExtractFn = std::function<QString(const QString&, ErrInfo*, const std::function<void(int)>&,
+                                        const std::atomic<bool>*, const QString&, const QString&)>;
 
-QJsonObject extractVerb(const QJsonObject& req, const Ctx& ctx, ExtractFn fn) {
+QJsonObject extractVerb(const QJsonObject& req, const Ctx& ctx, const ExtractFn& fn,
+                        const QJsonObject& params) {
     const QString cmd = reqCmd(req);
     const QString input = req.value(QStringLiteral("input")).toString();
     auto run = [&](const QString& outPath, const QString& outDir) {
@@ -540,16 +543,24 @@ QJsonObject extractVerb(const QJsonObject& req, const Ctx& ctx, ExtractFn fn) {
     };
     if (req.value(QStringLiteral("workspace")).toString().isEmpty())
         return run(explicitOutput(req), {});
-    return runInWorkspace(req, QJsonObject(), QJsonValue(QJsonValue::Null),
+    return runInWorkspace(req, params, QJsonValue(QJsonValue::Null),
                           [&](const Workspace::VersionPlan& plan) { return run({}, plan.versionDir); });
 }
 
 QJsonObject cmdExtractAudio(const QJsonObject& req, const Ctx& ctx) {
-    return extractVerb(req, ctx, &FFExtractor::extractAudio);
+    const int track = trackOf(req);// ≥0 缺省：无键 = -1（best-stream，底座命名不带 _t<N> 段零漂移）
+    QJsonObject params;// 版本记录 params（FR-1 D3）：显式轨入来源链；无键空对象（无轨行为逐字节不变）
+    if (req.contains(QStringLiteral("track"))) params.insert(QStringLiteral("track"), track);
+    return extractVerb(req, ctx,
+                       [track](const QString& in, ErrInfo* err, const std::function<void(int)>& p,
+                               const std::atomic<bool>* c, const QString& outPath, const QString& outDir) {
+                           return FFExtractor::extractAudio(in, err, p, c, outPath, outDir, track);
+                       },
+                       params);
 }
 
 QJsonObject cmdExtractVideo(const QJsonObject& req, const Ctx& ctx) {
-    return extractVerb(req, ctx, &FFExtractor::extractVideo);
+    return extractVerb(req, ctx, &FFExtractor::extractVideo, {});// FR-1：extractVideo 拒收 track（信封段「未知字段」）
 }
 
 // wsInfo：工作区只读查询（D4）——root 必填（requireString 复用动词级消息模板），定位走缓存/哈希，
@@ -625,15 +636,17 @@ struct BuiltinVerb {
 const QList<BuiltinVerb>& builtinVerbs() {
     static const QList<BuiltinVerb> verbs = {
         {"probe", cmdProbe, false, false, {}},
-        {"extractAudio", cmdExtractAudio, true, true, {}},
-        {"extractVideo", cmdExtractVideo, true, true, {}},
+        {"extractAudio", cmdExtractAudio, true, true, {"track"}},// track（FR-1 D3）：流复制的选轨轨参
+        {"extractVideo", cmdExtractVideo, true, true, {}},// FR-1：extractVideo 无 track（无声视频无音轨可选）
         {"wsInfo", cmdWsInfo, false, false, {"root"}},
         {"modelList", cmdModelList, false, false, {"root"}, false},
         {"modelDownload", cmdModelDownload, false, false, {"id", "root", "endpoint"}, false},
         {"modelImport", cmdModelImport, false, false, {"path", "id", "for", "root"}, false},
         // 管线（FR-9 D9）：无引擎参与的编排处理器；拒 output（终产物路径由工作区版本化决定，D6）；
-        // workspace 必填（cmdPipeline 内检，缺即 E_PARAMS）；steps 专有键
-        {"pipeline", cmdPipeline, false, true, {"steps"}},
+        // workspace 必填（cmdPipeline 内检，缺即 E_PARAMS）；steps 专有键；track（FR-1 D6）= 源头
+        // 文件选轨轨参，命令层仅注入步 1 子请求（cmdPipeline 组装点）；batch 不收 track（绝对索引是
+        // 文件级属性，共享模板跨异构文件无意义——给了即未知字段，零代码拒收）
+        {"pipeline", cmdPipeline, false, true, {"steps", "track"}},
         // 批处理（FR-10 D9）：无引擎参与的编排处理器（件循环组合既有 execute）；拒 output（件产物
         // 路径由工作区版本化决定，D5）；workspace 必填（cmdBatch 内检）；inputs/steps 专有键；
         // input 必填豁免——批用 inputs 数组，给了单数 input 即未知字段（与 model 族同型，D5）
@@ -696,6 +709,7 @@ QJsonObject execute(const QJsonObject& request, const Ctx& ctx) {
             if (key == QLatin1String("output") && allowsOutput) continue;
             if (key == QLatin1String("workspace")) continue;// workspace 在信封段专检（能力/类型/互斥，见下）
             if (entry && EngineRegistry::isDeclaredParam(*entry, key)) continue;
+            if (entry && key == QLatin1String("track")) continue;// 轨参（FR-1 D3）：信封字段（不入 ParamSpec——非引擎 DSP 参数，spec §7.1 拍板 A）；引擎动词专属放行，其余动词仍走未知字段
             if (builtin) {
                 bool extra = false;
                 for (const char* k : builtin->extraKeys)
@@ -732,6 +746,16 @@ QJsonObject execute(const QJsonObject& request, const Ctx& ctx) {
             if (o.toString().isEmpty()) return errorResponse(cmd, errCodeText(ErrCode::Params), QStringLiteral("output 不能为空"));
             if (QFileInfo(o.toString()).absoluteFilePath() == QFileInfo(input).absoluteFilePath())
                 return errorResponse(cmd, errCodeText(ErrCode::Params), QStringLiteral("output 不能与 input 相同（原件只读）"));
+        }
+        // —— 轨参类型校验（FR-1 D3，信封段统一）：track 带了即须为整数且 ≥0（放行面在上方白名单——
+        //     probe/wsInfo/model 族/batch/steps 步内给了 track，先在未知字段处拦下，不进本段）——
+        if (request.contains(QStringLiteral("track"))) {
+            const QJsonValue t = request.value(QStringLiteral("track"));
+            const double tv = t.toDouble();
+            if (!t.isDouble() || tv != std::floor(tv))
+                return errorResponse(cmd, errCodeText(ErrCode::Params), QStringLiteral("track 必须是整数"));
+            if (tv < 0)
+                return errorResponse(cmd, errCodeText(ErrCode::Params), QStringLiteral("track 不能为负"));
         }
         // —— 分发：引擎条目走通用路径，内置动词走专有处理器（if/else 链与 kVerbs/verbFields 已退役）——
         if (entry) return runEngine(*entry, request, ctx);

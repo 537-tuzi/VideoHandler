@@ -1,0 +1,1472 @@
+== 素材（5s 正弦：44.1k 立体声 wav + 各引擎原生规格裸流）==
+== FFT 属性（WP-1.3：FFT-PR-001..004 自检 + PR-005 numpy 对照，判据 spec/fft-rewrite.md §3）==
+  n=  512 直通    往返   -138.4 dB  PASS
+               Parseval +4.13e-08     PASS
+               线性     -136.4 dB  PASS
+               冲激   0.00e+00     PASS
+  n= 6144 Bluestein 往返   -133.8 dB  PASS
+               Parseval -8.78e-09     PASS
+               线性     -132.3 dB  PASS
+               冲激   4.27e-07     PASS
+  n= 7680 Bluestein 往返   -132.3 dB  PASS
+               Parseval +1.80e-09     PASS
+               线性     -131.5 dB  PASS
+               冲激   4.43e-07     PASS
+  n= 8192 直通    往返   -137.3 dB  PASS
+               Parseval +2.82e-08     PASS
+               线性     -135.6 dB  PASS
+               冲激   0.00e+00     PASS
+  n=16384 直通    往返   -136.9 dB  PASS
+               Parseval +2.60e-08     PASS
+               线性     -135.1 dB  PASS
+               冲激   0.00e+00     PASS
+== fft self 全绿 ==
+  n=  512 幅/相复合 RMS  -142.5 dB  幅值最差(谱RMS归一) 2.60e-07  PASS
+  n= 6144 幅/相复合 RMS  -136.8 dB  幅值最差(谱RMS归一) 8.47e-07  PASS
+  n= 8192 幅/相复合 RMS  -141.3 dB  幅值最差(谱RMS归一) 8.03e-07  PASS
+== numpy 对照全绿 ==
+== 分块不变性（一次性 vs 4096 vs 977，输出须逐字节一致）==
+OK: dsp in=220500帧 out=441000样本 块=1000000000
+OK: dsp in=220500帧 out=441000样本 块=4096
+OK: dsp in=220500帧 out=441000样本 块=977
+  不变 PASS: dsp
+OK: pitch in=220500帧 out=441000样本 块=1000000000
+OK: pitch in=220500帧 out=441000样本 块=4096
+OK: pitch in=220500帧 out=441000样本 块=977
+  不变 PASS: pitch
+OK: ai in=80000帧 out=79872样本 块=1000000000
+OK: ai in=80000帧 out=79872样本 块=4096
+OK: ai in=80000帧 out=79872样本 块=977
+  不变 PASS: ai
+OK: dfn3 in=3360000帧 out=3360000样本 块=1000000000
+OK: dfn3 in=3360000帧 out=3360000样本 块=4096
+OK: dfn3 in=3360000帧 out=3360000样本 块=977
+  不变 PASS: dfn3
+OK: sep-voc in=220500帧 out=441000样本 块=1000000000
+OK: sep-voc in=220500帧 out=441000样本 块=4096
+OK: sep-voc in=220500帧 out=441000样本 块=977
+  不变 PASS: sep-voc
+OK: sep-inst in=220500帧 out=441000样本 块=1000000000
+OK: sep-inst in=220500帧 out=441000样本 块=4096
+OK: sep-inst in=220500帧 out=441000样本 块=977
+  不变 PASS: sep-inst
+== parity（WP-1.1 SG-6：四族 vs 参考实现；缺依赖族 SKIP，PARITY_REQUIRED=1 时 SKIP 即 FAIL）==
+== 素材保障（gen_inputs，确定性合成 + 哈希登记）==
+== PAR-DS（DSP 降噪 vs scipy 参考；hum50/hum60 分级判据 vs float32 同构参考）==
+PAR-DS-001: PASS parity=-50.9 dB (gate -45.0)  max|d|=1.87e-04  corr=0.999996  n=441000
+PAR-DS-002: PASS parity=-71.8 dB (gate -60.0)  max|d|=2.15e-04  corr=1.000000  n=441000
+PAR-DS-003: PASS parity=-75.6 dB (gate -60.0)  max|d|=2.12e-04  corr=1.000000  n=441000
+PAR-DS-004: PASS parity=-75.2 dB (gate -60.0)  max|d|=1.22e-04  corr=1.000000  n=14582
+PAR-DS-005: PASS parity=-51.4 dB (gate -45.0)  max|d|=1.64e-04  corr=0.999996  n=441000
+== PAR-GT（GTCRN vs sherpa-onnx 同模型；输出长度约定 (N//hop)·hop）==
+PAR-GT-001: PASS parity=-123.9 dB (gate -60.0)  max|d|=3.17e-08  corr=1.000000  n=79872
+PAR-GT-003a: PASS parity=-88.9 dB (gate -60.0)  max|d|=3.01e-07  corr=1.000000  n=256
+PAR-GT-003b: PASS parity=-120.8 dB (gate -60.0)  max|d|=1.12e-08  corr=1.000000  n=1024
+PAR-GT-003c: PASS parity=-117.5 dB (gate -60.0)  max|d|=2.19e-08  corr=1.000000  n=4096
+PAR-GT-003d: PASS  N=100/255 双方零输出（长度约定一致）
+== PAR-MD（MDX 分离 vs audio-separator 官方管线；判据同工作点 round-3）==
+  SKIP: PAR-MD 缺 audio-separator（配方 scripts/requirements.txt）
+== PAR-PT（变调 +2∘−2 往返谱判据；分块不变已由 ci-smoke 不变性组覆盖）==
+PAR-PT-001: PASS  长度差=0  峰频=+0.00 音分(期望+0±10)  杂散抑制=59.0dB(≥40)  RMS=+0.00dB(±0.1)
+== PAR-SR（输出跟随源：48k 全链直通；CLI 级 DUT vs ffmpeg 解码参考/scipy@48k）==
+PAR-SR-001: PASS  头=48000/2ch float32 240000 帧  bit-exact=是(240000/240000 帧)
+PAR-SR-002a-head: PASS  头=48000/2ch float32 240000 帧
+PAR-SR-002a: PASS parity=-71.1 dB (gate -60.0)  max|d|=2.36e-04  corr=1.000000  n=480000
+PAR-SR-002b-head: PASS  头=48000/2ch float32 240000 帧
+PAR-SR-002b: PASS  长度差=0  峰频=+200.41 音分(期望+200±10)  杂散抑制=48.2dB(≥40)  RMS=-0.00dB(±0.1)
+== PAR-DF（FR-4：DFN3 vs 官方 deep-filter CLI；整段单 Run −60dB 硬门禁）==
+PAR-DF-001: PASS parity=-75.3 dB (gate -60.0)  max|d|=4.74e-05  corr=1.000000  n=3120000
+PAR-DF-002: PASS parity=-78.9 dB (gate -60.0)  max|d|=4.73e-05  corr=1.000000  n=3737
+PAR-DF-003: PASS rms(d)=1.65e-05 (gate-abs 0.0002)  max|d|=3.14e-05  corr=0.999999  n=1563
+PAR-DF-004: PASS parity=-78.8 dB (gate -60.0)  max|d|=4.74e-05  corr=1.000000  n=3120000
+PAR-DF-SEAM: PASS parity=-3.4 dB (gate -2.5)  max|d|=5.69e-01  corr=0.736271  n=3120000
+PAR-DF-FEAT-enc.e0: PASS max|d|=0.000e+00 (gate 1e-05)
+PAR-DF-FEAT-enc.e1: PASS max|d|=0.000e+00 (gate 1e-05)
+PAR-DF-FEAT-enc.e2: PASS max|d|=0.000e+00 (gate 1e-05)
+PAR-DF-FEAT-enc.e3: PASS max|d|=0.000e+00 (gate 1e-05)
+PAR-DF-FEAT-enc.emb: PASS max|d|=0.000e+00 (gate 1e-05)
+PAR-DF-FEAT-enc.c0: PASS max|d|=0.000e+00 (gate 1e-05)
+PAR-DF-FEAT-enc.lsnr: PASS max|d|=0.000e+00 (gate 1e-05)
+PAR-DF-FEAT-erb_dec.m: PASS max|d|=0.000e+00 (gate 1e-05)
+PAR-DF-FEAT-df_dec.coefs: PASS max|d|=0.000e+00 (gate 1e-05)
+PAR-DF-SR-meta: PASS  engineResampled=false, 48000/1ch
+PAR-DF-SR-head: PASS  头=48000/1ch float32 3737 帧
+PAR-DF-SR: PASS parity=-5985.0 dB (gate -60.0)  max|d|=0.00e+00  corr=1.000000  n=3737
+== parity 全绿（有 SKIP 族，见上；本地降级跑） ==
+== CLI 冒烟（7 动词）==
+OK: /tmp/tmp.FnmRs5634g/w1.wav
+OK: /tmp/tmp.FnmRs5634g/w2.wav
+OK: /tmp/tmp.FnmRs5634g/w3.wav
+OK: /tmp/tmp.FnmRs5634g/w4.wav
+OK: /tmp/tmp.FnmRs5634g/w5.wav
+OK: /tmp/tmp.FnmRs5634g/w6.wav
+== ffprobe 体检（w1–w6 = pcm_f32le/44100/2ch；时长 w1/2/4/5/6=5s，w3 按引擎约定）==
+  体检 PASS
+== 命令层 JSON 面（FR-24：CMD 用例族，parity 同款接线）==
+== 正例（9 动词形态；48k 跟随源 / engineResampled 可观测，D4）==
+  PASS CMD-001
+  PASS CMD-002
+  PASS CMD-002f（ffprobe pcm_f32le,44100,2）
+  PASS CMD-003
+  PASS CMD-003f（ffprobe pcm_f32le,48000,2）
+  PASS CMD-004
+  PASS CMD-004f（ffprobe pcm_f32le,48000,2）
+  PASS CMD-005
+  PASS CMD-006
+  PASS CMD-006f（ffprobe pcm_f32le,44100,2）
+  PASS CMD-007
+  PASS CMD-007f（ffprobe pcm_f32le,44100,2）
+  PASS CMD-008
+  PASS CMD-009
+  PASS CMD-010
+  PASS CMD-011
+== 确定性（同请求两遍输出 cmp 逐字节一致，NFR-A2 前味）==
+  PASS CMD-012
+== 负例（恒出合法 JSON + 退出码 1 + 响应无 result；错误码分类见 D3）==
+  PASS CMD-020
+  PASS CMD-021
+  PASS CMD-021r（响应原文确定）
+  PASS CMD-022
+  PASS CMD-023
+  PASS CMD-024
+  PASS CMD-025
+  PASS CMD-026
+  PASS CMD-027
+  PASS CMD-028
+  PASS CMD-029
+  PASS CMD-030
+  PASS CMD-031
+  PASS CMD-032
+  PASS CMD-032f
+  PASS CMD-033
+  PASS CMD-033i
+  PASS CMD-034
+  PASS CMD-035
+== run-json 全绿 ==
+== 工作区版本化（FR-A4 片 A：WS 用例族，run-json 同款接线；缺 onnx 时 WS-030b SKIP）==
+== WS-CREATE（首任务自动建工作区：目录结构 + 源登记 + 缓存回填）==
+  PASS WS-001
+  PASS WS-002 目录结构 <stem>.<hash8>/v001_denoise/
+  PASS WS-003 版本产物在版本目录内（文件名沿用注册表后缀自描述）
+  PASS WS-004（workspace.json 断言）
+  PASS WS-005 根级缓存回填（path+size+mtimeMs→ws）
+== WS-CREATE（内容哈希身份：同内容换路径=同工作区；同名不同内容=不同工作区）==
+  PASS WS-006
+  PASS WS-007（workspace.json 断言）
+  PASS WS-008
+== WS-CHAIN（追加与链：v001 不可变、head 推进；同工作区 parentVersion；跨工作区哈希衔接）==
+  PASS WS-009
+  PASS WS-010 v001 记录登记后不可变（append-only）
+  PASS WS-011（workspace.json 断言）
+  PASS WS-012
+  PASS WS-013（workspace.json 断言）
+  PASS WS-014
+  PASS WS-015（workspace.json 断言）
+== WS-PROV（来源链完整性：filled 参数 / 模型摘要 / 输出真值 / wsInfo 一致）==
+  PASS WS-016（workspace.json 断言）
+  PASS WS-017（workspace.json 断言）
+  PASS WS-018
+  PASS WS-018b aiDenoise 前后源 sha256 不变（有模型动词也只读，补 WS-RO 面）
+  PASS WS-019（workspace.json 断言）
+  PASS WS-020
+  PASS WS-021（workspace.json 断言）
+  PASS WS-022
+  PASS WS-023 wsInfo 清单与 workspace.json 逐字段一致
+== WS-RO（原件只读不变式：源字节级不变 + 防线负例）==
+  PASS WS-024 工作区任务前后源 sha256 不变（denoise）
+  PASS WS-025 工作区任务前后源 sha256 不变（extractVideo）
+  PASS WS-026
+  PASS WS-027
+  PASS WS-028
+  PASS WS-027 后无产物残留
+== WS-FAIL（失败清理：无版本目录、索引不动、残迹不阻后续）==
+  PASS WS-029
+  PASS WS-029f 根未创建（只读根零残迹）
+  PASS WS-030
+  PASS WS-031 失败后 workspace.json 逐字节不变（索引只在成功后写）
+  PASS WS-032 失败无版本目录残留
+  PASS WS-030b
+  PASS WS-030b-i 索引仍逐字节不变
+  PASS WS-030b-f 版本目录已补删（登记器 owns 生命周期）
+  PASS WS-033
+  PASS WS-034（workspace.json 断言）
+  PASS WS-035
+  PASS WS-036
+  PASS WS-036b
+  PASS WS-036c
+  PASS WS-036d 损坏索引原样未被改写、无新版本目录（真相源不被静默重建/清空）
+== WS-ORPHAN（孤儿目录安全跳过：kill -9 残迹不阻后续、序号不复用）==
+  PASS WS-037
+  PASS WS-038（workspace.json 断言）
+== WS-QUERY（查询面：未登记空清单不落盘 + 参数负例）==
+  PASS WS-039
+  PASS WS-040 查询不落盘（未登记不建目录）
+  PASS WS-041
+  PASS WS-042
+  PASS WS-043
+  PASS WS-044
+  PASS WS-045
+  PASS WS-046
+== WS-TRUNC（截断素材：ok:true + 可解前缀输出；中途 I/O 错分支 e2e 不可构造，见 round-1 映射表）==
+  PASS WS-047
+  PASS WS-048（workspace.json 断言）
+== WS-MEM（内存有界：30min 素材首任务[含全量哈希] vs direct 峰值 RSS 同量级）==
+  峰值 RSS：direct=57.1MiB  workspace=58.1MiB  Δ=1.0MiB
+  PASS WS-049 峰值 RSS 同量级（|Δ|<32MiB，证伪整文件载入假设）
+== run-ws 全绿 ==
+== GUI 工作区接线（FR-A4 片 B：GWS 用例族，探针直调 FFExtractor 槽；缺 onnx 时硬退）==
+== 探针编译（gui-ws-probe.cpp，链主树 libengine.a；模型落 bin 侧供 appDir 相对解析）==
+== 素材（run-ws 同配方：44.1k 立体声 + 双流 mp4 + 取消用副本，两份互不影响）==
+== ws 相（七槽 + 历史查询 + 继续链 + probe）==
+  PASS ws 相运行（退出码）
+  PASS GWS-001 extractAudio（ok=1 + 文案格式不变 + <root>/<工作区>/vNNN_<cmd>/<产物>）
+  PASS GWS-001 extractVideo（ok=1 + 文案格式不变 + <root>/<工作区>/vNNN_<cmd>/<产物>）
+  PASS GWS-001 denoise（ok=1 + 文案格式不变 + <root>/<工作区>/vNNN_<cmd>/<产物>）
+  PASS GWS-001 aiDenoise（ok=1 + 文案格式不变 + <root>/<工作区>/vNNN_<cmd>/<产物>）
+  PASS GWS-001 pitch（ok=1 + 文案格式不变 + <root>/<工作区>/vNNN_<cmd>/<产物>）
+  PASS GWS-001 sep-vocals（ok=1 + 文案格式不变 + <root>/<工作区>/vNNN_<cmd>/<产物>）
+  PASS GWS-001 sep-inst（ok=1 + 文案格式不变 + <root>/<工作区>/vNNN_<cmd>/<产物>）
+  PASS GWS-001 chain-denoise（ok=1 + 文案格式不变 + <root>/<工作区>/vNNN_<cmd>/<产物>）
+  PASS GWS-001 CHAIN 继续链输入回拼（result.dir + v001 记录相对路径）
+  PASS GWS-001b 版本目录与产物在盘（tiny.69a2d32c/v001_extractAudio/tiny_audio.m4a）
+  PASS GWS-001b 版本目录与产物在盘（tiny.69a2d32c/v002_extractVideo/tiny_mute.mp4）
+  PASS GWS-001b 版本目录与产物在盘（st.0b2bb088/v001_denoise/st_denoised.wav）
+  PASS GWS-001b 版本目录与产物在盘（st.0b2bb088/v002_aiDenoise/st_ai.wav）
+  PASS GWS-001b 版本目录与产物在盘（st.0b2bb088/v003_pitch/st_pitch.wav）
+  PASS GWS-001b 版本目录与产物在盘（st.0b2bb088/v004_separate/st_vocals.wav）
+  PASS GWS-001b 版本目录与产物在盘（st.0b2bb088/v005_separate/st_instrumental.wav）
+  PASS GWS-001b 版本目录与产物在盘（st.0b2bb088/v006_denoise/st_denoised_denoised.wav）
+  PASS GWS-002 st 工作区 head=6、versions=6（多动词串行追加）
+  PASS GWS-002 版本动词序列正确
+  PASS GWS-002 parentVersion 链（继续链 v006←v001，前 5 版无父）
+  PASS GWS-002 tiny 工作区 head=2、versions=2（extract 族入工作区）
+  PASS GWS-004 wsInfo 回传 result 与 workspace.json 深度一致 + 全部版本产物（含继续回拼路径）在盘
+  PASS GWS-007 probe 槽在 root 注入后仍正常（探测文案照常）
+== cancel 相（spec §6-5 取消 GUI 面收口）==
+  PASS cancel 相运行（退出码）
+  PASS GWS-006 cancel-denoise「已取消」文案直通（mainwidget 特判字符串命中）
+  PASS GWS-006 cancel-extractAudio「已取消」文案直通
+  PASS GWS-006 st 工作区索引逐字节不变
+  PASS GWS-006 tiny 工作区索引逐字节不变
+  PASS GWS-006 st 无版本目录残留（恰 v001..v006）
+  PASS GWS-006 tiny 无版本目录残留（恰 v001..v002）
+== direct 相（默认不 setWorkspaceRoot = direct 形状，与 fr24 等价双跑互证）==
+  PASS direct 相运行（退出码）
+  PASS GWS-005 direct 产物落源目录（tiny_audio.m4a，fr24 GUI-PRD 同形状）
+  PASS GWS-005 direct 产物落源目录（tiny_mute.mp4，fr24 GUI-PRD 同形状）
+  PASS GWS-005 direct 产物落源目录（st_denoised.wav，fr24 GUI-PRD 同形状）
+  PASS GWS-005b GUI 槽 direct 产物与 CLI 直跑逐字节一致（跨面互证，未插键）
+  PASS GWS-007b direct 相 probe 正常
+== adv 相（对抗增补，round-3：换根/中文路径/wsInfo 失败载荷/置空回 direct）==
+  PASS adv 相运行（退出码）
+  PASS GWS-008 换根只影响后续任务（root1/root2 各自 v001 且各恰 1 版本，同内容两根互不可见）
+  PASS GWS-009 中文根+中文素材直通（工作区名/产物名带中文 stem）
+  PASS GWS-010 doWsInfo 对不在盘输入回失败载荷（ok=0 + 非空错误说明）
+  PASS GWS-011 注入后置空串回 direct（产物落源目录且 rootcn 仍 head=1，与 GWS-005 默认空串对称）
+== GWS-003 原件只读（各相全程结束后源文件 sha256 不变）==
+  PASS GWS-003 st.wav 前后 sha256 不变
+  PASS GWS-003 tiny.mp4 前后 sha256 不变
+== gui-ws 全绿 ==
+== 模型管理（FR-8 片 A：MDL 用例族；工作区走磁盘卷 TMPDIR——/tmp 为配额 tmpfs，
+   66MB×N 下载副本曾把配额逼满致 fwrite 静默失败假象，见 fr8 round-2.md）==
+  PASS 前置闸-gtcrn
+  PASS 前置闸-uvr
+== MDL-LIST：三视角合并（目录 ∪ models.json ∪ 磁盘） ==
+  PASS MDL-001
+  PASS MDL-002
+  PASS MDL-003
+  PASS MDL-004
+  PASS MDL-005
+  PASS MDL-006
+  PASS MDL-007
+== MDL-DL：下载 → 校验 → 落位 → 登记（幂等） ==
+  PASS MDL-020
+  PASS MDL-020s
+  PASS MDL-020p
+  PASS MDL-020m
+  PASS MDL-020j
+  PASS MDL-021
+  PASS MDL-021z
+  PASS MDL-023
+  PASS MDL-023z
+  PASS MDL-023m
+  PASS MDL-008
+  PASS MDL-009
+  PASS MDL-009b
+  PASS MDL-009m
+== MDL-RESUME：断点续传（.part 跨调用 + Range 请求头 ground truth） ==
+  PASS MDL-030
+  PASS MDL-030p
+  PASS MDL-030s
+  PASS MDL-030g
+  PASS MDL-031
+  PASS MDL-031s
+  PASS MDL-031p
+  PASS MDL-031g
+  PASS MDL-024t
+  PASS MDL-024tn
+  PASS MDL-024ts
+  PASS MDL-032
+  PASS MDL-032s
+== MDL-NEG：失败注入与错误分类（E_NET 域 + 精确 .part 语义；LIBX 全新根防幂等短路） ==
+  PASS MDL-040
+  PASS MDL-041
+  PASS MDL-042
+  PASS MDL-043
+  PASS MDL-043p
+  PASS MDL-044
+  PASS MDL-044p
+  PASS MDL-044d
+  PASS MDL-044m
+  PASS MDL-045
+  PASS MDL-046
+  PASS MDL-047
+  PASS MDL-048
+  PASS MDL-049
+  PASS MDL-049p
+  PASS MDL-050
+  PASS MDL-050p
+  PASS MDL-051
+  PASS MDL-051d
+  PASS MDL-052
+== MDL-IMPORT：复制进库（by-id 指纹 / 自由导入试开） ==
+  PASS MDL-060
+  PASS MDL-060s
+  PASS MDL-060i
+  PASS MDL-060p
+  PASS MDL-060m
+  PASS MDL-061
+  PASS MDL-061p
+  PASS MDL-061x
+  PASS MDL-062
+  PASS MDL-062s
+  PASS MDL-063
+  PASS MDL-063p
+  PASS MDL-062c
+  PASS MDL-062cz
+  PASS MDL-062b
+  PASS MDL-062bm
+  PASS MDL-062bn
+  PASS MDL-062u
+  PASS MDL-062r
+  PASS MDL-062r2
+  PASS MDL-062rm
+  PASS MDL-062rs
+  PASS MDL-064
+  PASS MDL-065
+  PASS MDL-066
+  PASS MDL-069
+  PASS MDL-070
+  PASS MDL-067
+  PASS MDL-067p
+  PASS MDL-010
+  PASS MDL-010z
+== MDL-ENVELOPE：信封分叉零漂移（requiresInput 命门） ==
+  PASS MDL-080
+  PASS MDL-081
+  PASS MDL-081r（响应原文逐字节一致）
+  PASS MDL-082
+  PASS MDL-082b
+  PASS MDL-083
+  PASS MDL-084
+== MDL-CANCEL：取消语义（探针直调；CLI 单发无取消通道） ==
+  PASS MDL-090（预置取消：零网络请求）
+  PASS MDL-091（中段取消：.part 保留作续传缓存）
+  PASS MDL-092
+  PASS MDL-092g
+  PASS MDL-093（导入复制环取消：E_CANCELLED + .part 即删 + 零落位）
+== GML：FR-8 片 B GUI 面（两级缺省解析/结构化 modelMissing/对话框全链；探针 mdl-gui-probe） ==
+== GML 探针编译（mdl-gui-probe：offscreen QApplication 驱动 MainWidget/MediaService 全链）==
+== GML-E：两级缺省解析（D1：库已装 → appDir bundled）+ modelMissing 触发面（D8） ==
+  PASS GML-101
+  PASS GML-101m
+  PASS GML-101p
+  PASS GML-102
+  PASS GML-102p
+  PASS GML-102m
+  PASS GML-103
+  PASS GML-103bt
+  PASS GML-103b
+  PASS GML-104
+  PASS GML-105
+  PASS GML-106
+  PASS GML-106p
+  PASS GML-107
+  PASS GML-107m
+  PASS GML-101n
+  PASS GML-101nm
+== GML-G：对话框全链（offscreen；XDG_CONFIG_HOME 隔离 QSettings；节流服务拉长传输窗） ==
+  PASS GML-110
+  PASS GML-110n
+  PASS GML-110r
+  PASS GML-110t
+  PASS GML-110c
+  PASS GML-111
+  PASS GML-112
+  PASS GML-113
+  PASS GML-113p
+  PASS GML-113u
+  PASS GML-114e
+  PASS GML-114
+  PASS GML-114d
+  PASS GML-115
+  PASS GML-115s
+  PASS GML-115r
+  PASS GML-115f
+  PASS GML-116
+  PASS GML-116i
+  PASS GML-116r
+  PASS GML-116f
+  PASS GML-116g
+  PASS GML-117
+  PASS GML-118
+  PASS GML-118s
+  PASS GML-119
+== 完整性终闸（fixture 与 third_party 未被改动；红线：不动 third_party/） ==
+  PASS MDL-999
+== run-models 全绿 ==
+== 管线串联（FR-9：PIPE 用例族，CLI 面 + GUI 壳；工作区走磁盘卷 TMPDIR 同 mdl 原因——
+   30min 素材×多个 f32 产物 ≈600MB×n 会撞 /tmp 配额，见 run-pipe.sh 头注）==
+== PIPE-OK（正例链：两步/三步/带模型；result 结构 + 落位 + 中间产物体检）==
+  PASS PIPE-OK-001
+  PASS PIPE-OK-002
+  PASS PIPE-OK-003 版本目录落位 v001_denoise/ + v002_pitch/
+  PASS PIPE-OK-004（ffprobe pcm_f32le,48000,2）
+  PASS PIPE-OK-005（ffprobe pcm_f32le,48000,2）
+  PASS PIPE-OK-006（workspace.json 断言）
+  PASS PIPE-OK-007
+  PASS PIPE-OK-008
+  PASS PIPE-OK-009（ffprobe pcm_f32le,44100,2）
+  PASS PIPE-OK-010（ffprobe pcm_f32le,44100,2）
+== PIPE-EQV（编排等价核心护栏：管线跑 vs 逐步手动跑，逐字节一致）==
+  PASS PIPE-EQV-001
+  PASS PIPE-EQV-002
+  PASS PIPE-EQV-003
+  PASS PIPE-EQV-004
+  PASS PIPE-EQV-005
+  PASS PIPE-EQV-006
+  PASS PIPE-EQV-007
+  PASS PIPE-EQV-008
+  PASS PIPE-EQV-009
+== PIPE-CHAIN（版本链与标记：pipeline 标记/parentVersion/无关任务交错/缓存删除续定位）==
+  PASS PIPE-CHAIN-001
+  PASS PIPE-CHAIN-002
+  PASS PIPE-CHAIN-003
+  PASS PIPE-CHAIN-004（workspace.json 断言）
+  PASS PIPE-CHAIN-005（workspace.json 断言）
+  PASS PIPE-CHAIN-006
+== PIPE-PREVAL（整链静态预校验：开工前拦截，零执行零产物）==
+  PASS PIPE-PREVAL-001
+  PASS PIPE-PREVAL-002
+  PASS PIPE-PREVAL-003
+  PASS PIPE-PREVAL-004
+  PASS PIPE-PREVAL-005
+  PASS PIPE-PREVAL-006
+  PASS PIPE-PREVAL-007
+== PIPE-FAIL（部分失败：步 2 坏模型 → 归属 + 已提交步保留 + 无残迹 + 重跑起新号）==
+  PASS PIPE-FAIL-001
+  PASS PIPE-FAIL-002 工作区目录在（步 1 已登记）
+  PASS PIPE-FAIL-003（workspace.json 断言）
+  PASS PIPE-FAIL-004
+  PASS PIPE-FAIL-005
+  PASS PIPE-FAIL-006
+  PASS PIPE-FAIL-007（workspace.json 断言）
+  PASS PIPE-FAIL-008
+== PIPE-NEG（schema 负例：steps 形态/链级键/内置动词/缺 workspace，逐条消息断言）==
+  PASS PIPE-NEG-001
+  PASS PIPE-NEG-002
+  PASS PIPE-NEG-003
+  PASS PIPE-NEG-004
+  PASS PIPE-NEG-005
+  PASS PIPE-NEG-006
+  PASS PIPE-NEG-007
+  PASS PIPE-NEG-008
+  PASS PIPE-NEG-009
+  PASS PIPE-NEG-010
+  PASS PIPE-NEG-011
+  PASS PIPE-NEG-012
+  PASS PIPE-NEG-013
+  PASS PIPE-NEG-014
+  PASS PIPE-NEG-015
+  PASS PIPE-NEG-016
+  PASS PIPE-NEG-017
+  PASS PIPE-NEG-018
+  PASS PIPE-NEG-019 schema 错误不带 step/stepCmd（归属键只随步骤级错误）
+== PIPE-CANCEL/PROG（取消与进度：探针直调 execute 的 Ctx 注入面，四相）==
+== 探针编译（pipe-cancel-probe.cpp，链主树 libengine.a；陈旧库闸同 gui-ws）==
+  PASS PIPE-CAN-001 cancel-pre（E_CANCELLED/「已取消」逐字/step=1/零进度）
+  PASS PIPE-CAN-002
+  PASS PIPE-CAN-003 cancel-mid（step=1，首进度点即取消）
+  PASS PIPE-CAN-004
+  PASS PIPE-CAN-005 cancel-between（step=2/「已取消」逐字/进度止于映射 50）
+  PASS PIPE-CAN-006（workspace.json 断言）
+  PASS PIPE-PROG-001 进度等分映射（终值 100/单调/步界 33·66）
+== PIPE-GUIE（GUI worker 壳：doPipeline 槽直调，附裁 1 的 forVerb=stepCmd 实证）==
+  PASS PIPE-GUIE-001 ok-chain（管线完成文案/进度 100/产物在盘/无 modelMissing）
+  PASS PIPE-GUIE-002（workspace.json 断言）
+  PASS PIPE-GUIE-003 missing-step1（找不到模型文案 + modelMissing(aiDenoise)）
+  PASS PIPE-GUIE-004 emid-chain（E_MODEL 步骤归属 + forVerb=aiDenoise 附裁 1）
+  PASS PIPE-GUIE-005 emid-negative（E_FILE 不触发 modelMissing）
+  PASS PIPE-GUIE-006 cancel-between（「已取消」逐字）
+  PASS PIPE-GUIE-007（workspace.json 断言）
+== PIPE-MEM（内存抽测：30min 两步链峰值 = 逐步最大值而非和，NFR-P4/D1）==
+  峰值 RSS：管线两步链=60228KB / denoise=60112KB / pitch=58936KB（单动词最大=60112KB）
+  同量级实证：管线 60228KB ≤ 单动词最大 60112KB + 32MB 且 < 256MB
+  PASS PIPE-MEM-001 管线峰值与最重单动词同量级（远低于整文件 regime）
+  PASS PIPE-MEM-002
+== PIPE-MEM 带模型链（120s aiDenoise→separate：GTCRN 会话零叠加，审查轮 P2-1 补面）==
+  PASS PIPE-MEM-003 带模型链实跑成功（峰值断言前置防空转）
+  峰值 RSS：模型两步链=1535228KB / aiDenoise=85888KB / separate=1515828KB（单动词最大=1515828KB）
+  同量级实证：模型链 1535228KB ≤ 单动词最大 1515828KB + 32MB 且 < 2GiB（NFR-P4，GTCRN 会话随遍释放零叠加）
+  PASS PIPE-MEM-004 带模型链峰值与最重单动词同量级（D1 模型会话零叠加 + NFR-P4）
+== run-pipe 全绿 ==
+== 探针编译（pipe-gui-probe.cpp gui 模式：offscreen MainWidget/MediaService 全链）==
+== 素材（run-ws 同配方）与 bin 布局（appDir 缺省解析的模型位）==
+== PIPE-GUI-G：widget 全链（预设组包 + busy 锁 + 成功文案）==
+  PASS PIPE-GUI-001 文件载入后一键按钮解禁
+  PASS PIPE-GUI-002..005 三条预设组包（动态参数注入：humBase/wind/semi 逐项）
+  PASS PIPE-GUI-006 busy 锁覆盖新按钮（4 case 提交即锁/完成即解）
+  PASS PIPE-GUI-007 成功文案「管线完成：<终产物路径>」
+== gui-pipe 全绿 ==
+== 探针编译（gui-pipe.sh 同配方：moc + pkg-config + libengine.a + ORT）==
+== 素材（5s 正弦）与 bin 布局（appDir 无模型：两级解析皆缺 → pre-check E_MODEL）==
+== MIST（Fix 2 用途文案映射 + 引导链；探针单进程三触发）==
+  PASS MIST-001 文件载入后一键按钮解禁（前置健康）
+  PASS MIST-002 ai 相位任务失败出自管线链预解析（找不到AI 降噪模型）
+  PASS MIST-003 aiDenoise 问询文案逐字「AI 降噪模型不可用，是否打开模型管理下载？」
+  PASS MIST-004 ai 问询 Yes → 模型管理对话框打开
+  PASS MIST-005 sep 相位任务失败出自管线链预解析（找不到人声分离模型）
+  PASS MIST-006 separate 问询文案逐字「人声分离模型不可用，是否打开模型管理下载？」
+  PASS MIST-007 sep 问询 Yes → 模型管理对话框打开
+  PASS MIST-008 未登记动词退通用文案逐字「模型不可用，是否打开模型管理下载？」
+  PASS MIST-009 通用文案不含「AI 降噪/人声分离」（未登记不误入映射）
+  PASS MIST-010 未登记动词问询 Yes → 模型管理对话框打开（引导链一致）
+  PASS MIST-011 探针三触发完整收尾（PROBE DONE）
+== missing-text 全绿（Fix 2 用途文案映射 + 引导链锁定）==
+== 批处理队列（FR-10：BATCH 用例族，CLI 面 + GUI 壳探针；工作区走磁盘卷 TMPDIR 同 mdl 原因——
+   MEM 族 30min×2 素材与带模型批产物会撞 /tmp 配额，见 run-batch.sh 头注）==
+== BATCH-OK（正例批：3 件两步模板 / 单步模板 / 带模型批；result 结构 + 落位 + 体检）==
+  PASS BATCH-OK-001
+  PASS BATCH-OK-002 三件三个工作区（互异）
+  PASS BATCH-OK-003
+  PASS BATCH-OK-004（ffprobe pcm_f32le,44100,2）
+  PASS BATCH-OK-005（ffprobe pcm_f32le,48000,2）
+  PASS BATCH-OK-006（ffprobe pcm_f32le,44100,1）
+  PASS BATCH-OK-007
+  PASS BATCH-OK-008
+  PASS BATCH-OK-009（ffprobe pcm_f32le,44100,2）
+  PASS BATCH-OK-010
+== BATCH-EQV（编排等价核心护栏：批跑 vs 逐件手动跑 pipeline，逐字节一致）==
+  PASS BATCH-EQV-001
+  PASS BATCH-EQV-m0
+  PASS BATCH-EQV-2a
+  PASS BATCH-EQV-2b
+  PASS BATCH-EQV-m1
+  PASS BATCH-EQV-3a
+  PASS BATCH-EQV-3b
+  PASS BATCH-EQV-m2
+  PASS BATCH-EQV-4a
+  PASS BATCH-EQV-4b
+  PASS BATCH-EQV-008
+  PASS BATCH-EQV-n0
+  PASS BATCH-EQV-9
+  PASS BATCH-EQV-n1
+  PASS BATCH-EQV-10
+  PASS BATCH-EQV-SR1
+  PASS BATCH-EQV-SRs0
+  PASS BATCH-EQV-SRc0
+  PASS BATCH-EQV-SRs1
+  PASS BATCH-EQV-SRc1
+  PASS BATCH-EQV-SRs2
+  PASS BATCH-EQV-SRc2
+== BATCH-FAIL（失败不中断：件错误原文透传 + 幸存件落盘 + 全败批 ok 口径 + 步骤归属透传）==
+  PASS BATCH-FAIL-001
+  PASS BATCH-FAIL-002 件错误无「第 N 件」前缀（附裁 3）
+  PASS BATCH-FAIL-003
+  PASS BATCH-FAIL-004
+  PASS BATCH-FAIL-005
+  PASS BATCH-FAIL-006（workspace.json 断言）
+== BATCH-NEG（schema 负例：逐条消息断言 + 开工前拦截零副作用）==
+  PASS BATCH-NEG-001
+  PASS BATCH-NEG-002
+  PASS BATCH-NEG-003
+  PASS BATCH-NEG-004
+  PASS BATCH-NEG-005
+  PASS BATCH-NEG-006
+  PASS BATCH-NEG-007
+  PASS BATCH-NEG-008
+  PASS BATCH-NEG-009
+  PASS BATCH-NEG-010
+  PASS BATCH-NEG-011
+  PASS BATCH-NEG-012
+  PASS BATCH-NEG-013
+  PASS BATCH-NEG-014
+  PASS BATCH-NEG-015
+  PASS BATCH-NEG-016
+  PASS BATCH-NEG-017
+  PASS BATCH-NEG-018
+  PASS BATCH-NEG-019
+  PASS BATCH-NEG-020
+  PASS BATCH-NEG-021
+  PASS BATCH-NEG-022
+  PASS BATCH-NEG-023
+  PASS BATCH-NEG-024
+  PASS BATCH-NEG-025
+  PASS BATCH-NEG-026
+  PASS BATCH-NEG-027
+  PASS BATCH-NEG-028 schema 错误不带 step/stepCmd（归属键只随步骤级错误）
+  PASS BATCH-NEG-029
+  PASS BATCH-NEG-030
+== BATCH-WS（工作区隔离与 batch 标记：件间隔离/双键/同内容续号/缓存删除/非批零新键）==
+  PASS BATCH-WS-001（workspace.json 断言）
+  PASS BATCH-WS-002（workspace.json 断言）
+  PASS BATCH-WS-003（workspace.json 断言）
+  PASS BATCH-WS-004（workspace.json 断言）
+  PASS BATCH-WS-005
+  PASS BATCH-WS-006
+  PASS BATCH-WS-007（workspace.json 断言）
+  PASS BATCH-WS-008
+  PASS BATCH-WS-009
+  PASS BATCH-WS-010（workspace.json 断言）
+  PASS BATCH-WS-011
+  PASS BATCH-WS-012
+  PASS BATCH-WS-013
+== BATCH-CANCEL/PROG（取消与进度：探针直调 execute 的 Ctx 注入面，五相）==
+== 探针编译（batch-cancel-probe.cpp，链主树 libengine.a；陈旧库闸同 run-pipe）==
+  PASS BATCH-CAN-001 cancel-pre（E_CANCELLED/「已取消」逐字/completed=0/total=2/零进度）
+  PASS BATCH-CAN-002
+  PASS BATCH-CAN-003 cancel-mid（件 1 在途取消，completed=0）
+  PASS BATCH-CAN-004
+  PASS BATCH-CAN-005 cancel-between（completed=1/「已取消」逐字/进度止于映射 50）
+  PASS BATCH-CAN-006（workspace.json 断言）
+  PASS BATCH-PROG-001 件层等分映射（终值 100/单调/件界 33·66）
+  PASS BATCH-PROG-002 两层等分复合映射（边界 25·50·75·100）
+== BATCH-GUIE（GUI worker 壳：doBatch 槽直调，附裁 1 的顺序与禁发面）==
+  PASS BATCH-GUIE-001 ok-batch（载荷 JSON/恰一次/进度 100/无 modelMissing）
+  PASS BATCH-GUIE-002 missing-pre（找不到模型文案 + modelMissing(aiDenoise) + B→M 顺序）
+  PASS BATCH-GUIE-003
+  PASS BATCH-GUIE-004 emid-item（okCount=0 且 ok=1 + 零 modelMissing，Y5 封堵）
+  PASS BATCH-GUIE-005 cancel（「已取消」逐字）
+  PASS BATCH-GUIE-006（workspace.json 断言）
+== BATCH-MEM（内存抽测：2 件 × 30min 批峰值 = 件·步最大值而非叠加，NFR-P4/D1）==
+  PASS BATCH-MEM-001 批实跑成功（峰值断言前置防空转）
+  峰值 RSS：2 件批（denoise+pitch）=61360KB / denoise=59584KB / pitch=58816KB（单动词最大=59584KB）
+  同量级实证：批 61360KB ≤ 单动词最大 59584KB + 32MB 且 < 256MB（件串行×步串行零叠加）
+  PASS BATCH-MEM-002 批峰值与最重单动词同量级（远低于整文件 regime）
+== BATCH-MEM 带模型批（2 件 × 120s aiDenoise→separate：模型会话跨件零叠加）==
+  PASS BATCH-MEM-003 带模型批实跑成功（防空转前置）
+  峰值 RSS：模型两步批=1531120KB / aiDenoise=88196KB / separate=1515844KB（单动词最大=1515844KB）
+  同量级实证：模型批 1531120KB ≤ 单动词最大 1515844KB + 32MB 且 < 2GiB（模型会话随遍释放零叠加）
+  PASS BATCH-MEM-004 带模型批峰值与最重单动词同量级（NFR-P4）
+== run-batch 全绿 ==
+== 探针编译（gui-batch-probe.cpp：offscreen MainWidget/MediaService 全链）==
+== 素材（run-batch 同配方）与 bin 布局（appDir 缺省解析的模型位）==
+== BATCH-GUI-P（widget 全链主路径：组包 + busy 全批覆盖 + 文案 + 渲染 + 取消静默）==
+  PASS BATCH-GUI-001 控件面就绪（清单/动作组合 8 条=5 单步+3 预设，OQ-6(a)）
+  PASS BATCH-GUI-002..012 组包断言（8 动作 × 动态参数注入 + mixed/cancel 清单透传，深度比对）
+  PASS BATCH-GUI-013 busy 锁全批覆盖（11 case 提交即锁/完成即解）
+  PASS BATCH-GUI-014 批运行中锁持续（首个进度回调采样全锁；denoff 预校验失败零进度）
+  PASS BATCH-GUI-003b denoff 失败面（引擎原文透传 + 行不渲染）
+  PASS BATCH-GUI-015 完成文案「批处理完成：2/2 件成功」（信息弹窗逐字，附裁 5）
+  PASS BATCH-GUI-016 混合败件完成文案「批处理完成：1/2 件成功」
+  PASS BATCH-GUI-017 清单逐件渲染（成功（版本 N）/失败：E_FILE：原文，index 对位）
+  PASS BATCH-GUI-018 「已取消」静默（零弹窗/状态行逐字/行不渲染）
+  PASS BATCH-GUI-019 批进度终值 100（主进度条满格代理；denoff 零进度）
+== BATCH-GUI-M（缺模型引导 widget 面：开工前速断 + 双弹窗 + busy 释放）==
+  PASS BATCH-GUI-020 缺模型开工前速断（警告+问询双弹窗/模型管理打开/busy 已释放）
+  PASS BATCH-GUI-021 缺模型整批速断零件启动（零工作区目录）
+== BATCH-GUI-A（多选对话框应答段：尽力，offscreen 不落定则记档降级）==
+  PASS BATCH-GUI-022 多选对话框应答（行编辑引号多填 + AcceptRole，清单 2 件序正确）
+== gui-batch 全绿 ==
+== FR-4 质量档（FR4/GFR4 用例族；工作区走磁盘卷 TMPDIR 同 mdl 原因——
+   2h 素材 691MB + 1.4GB f32 产物与真网下载副本会撞 /tmp 配额，MDL-005 离线自动 SKIP）==
+== FR4-OK：aiDenoiseHq 基础通路（48k 直通 / 工作区 / 44.1k 重采样） ==
+  PASS FR4-OK-001
+  PASS FR4-OK-001z
+  PASS FR4-OK-001d
+  PASS FR4-OK-002
+  PASS FR4-OK-002z
+  PASS FR4-OK-002f
+  PASS FR4-OK-003
+== FR4-NEG：负例五连（信封/参数/模型/红线） ==
+  PASS FR4-NEG-001
+  PASS FR4-NEG-002
+  PASS FR4-NEG-002m
+  PASS FR4-NEG-002e
+  PASS FR4-NEG-003
+  PASS FR4-NEG-004
+  PASS FR4-NEG-005
+  PASS FR4-NEG-noart
+== FR4-EQV：零漂移锚（旧 aiDenoise/GTCRN 面不因 FR-4 改动） ==
+OK: /home/psh/VideoHandler/build-linux/.fr4-tmp/tmp.HCwkdRsZpz/eq1a.wav
+OK: /home/psh/VideoHandler/build-linux/.fr4-tmp/tmp.HCwkdRsZpz/eq1b.wav
+  PASS FR4-EQV-001
+  PASS FR4-EQV-002
+  PASS FR4-EQV-002f
+  PASS FR4-EQV-003
+== FR4-REG：编组面回归（pipeline/batch 对新动词的承接） ==
+  PASS FR4-REG-001
+  PASS FR4-REG-001f
+  PASS FR4-REG-001z
+  PASS FR4-REG-002
+  PASS FR4-REG-002z
+  PASS FR4-REG-003
+  PASS FR4-REG-003z
+== FR4-MDL：模型管理面（目录表/导入/负例；真网下载分级 SKIP） ==
+  PASS FR4-MDL-001
+  PASS FR4-MDL-001z
+  PASS FR4-MDL-002
+  PASS FR4-MDL-002z
+  PASS FR4-MDL-002v
+  PASS FR4-MDL-003
+  PASS FR4-MDL-003z
+  PASS FR4-MDL-004a
+  PASS FR4-MDL-004b
+  PASS FR4-MDL-004p
+  PASS FR4-MDL-004z
+  PASS FR4-MDL-004c
+  PASS FR4-MDL-004c2
+  PASS FR4-MDL-004c3
+  PASS FR4-MDL-004c4
+  SKIP FR4-MDL-005/006（离线：探测 https://raw.githubusercontent.com/Rikorose/DeepFilterNet/main/models/DeepFilterNet3_onnx.tar.gz 不通）
+== GFR4：GUI 面（fr4-gui-probe：engine 相缺省解析/缺模型文案 + gui 相档位三路组包） ==
+  PASS GFR4-101
+  PASS GFR4-102
+  PASS GFR4-103
+  PASS GFR4-104
+OK: /home/psh/VideoHandler/build-linux/.fr4-tmp/tmp.HCwkdRsZpz/e4cli.wav
+  PASS GFR4-104b
+  PASS GFR4-201
+  PASS GFR4-202
+  PASS GFR4-203
+  PASS GFR4-204
+  PASS GFR4-205
+== FR4-RES：资源面（生产 CLI 实测；RTF ≤0.5、2h 峰值 RSS ≤2GB——NFR-P4/L 红线） ==
+  RTF = 2154/65000 = 0.0331
+  PASS FR4-RES-001
+  2h 峰值 RSS = 829 MiB（门 ≤2048）；wall = 3:29.26
+  PASS FR4-RES-002
+  PASS FR4-RES-002d
+== 完整性终闸（素材原件未被改写（原件只读红线）+ third_party 未被改动） ==
+  PASS FR4-998
+  PASS FR4-999
+== run-fr4 全绿（有 SKIP，见上） ==
+== FR-4 golden 契约守卫（round-2：官方 CLI 一文件一进程——批量调用状态串染实证，防 gen_golden 被改成批量）==
+  PASS ISO-001 首件干净（批量调用首件与独立调用逐字节一致——串染只伤次件）
+  PASS ISO-002 次件串染实证（批量调用第 2 件 ≠ 独立调用——gen_golden 保守规则的存在理由）
+== dfn3-cli-isolation 全绿 ==
+== FR-1 多音轨选择（TRK/TRK-GUI/ZD-NET/BUILD 族；工作区走磁盘卷 TMPDIR 同 mdl 原因——
+   ai/hq/sep 产物与 ZD-NET 回归网 run-models/run-pipe/run-batch 的 f32 中间物会撞 /tmp 配额）==
+== BUILD：linux-test 全量重编零警告（matrix BUILD 行） ==
+  PASS BUILD（零警告零错误，全量重编）
+== 素材（run-trk 同配方；规格/时长/语言/旗标错开作选择判别） ==
+== TRK-001：probe 增键面（条件插键 + tiny 零漂移门） ==
+  PASS TRK-001a
+  PASS TRK-001b
+  PASS TRK-001c
+== TRK-002..007：六引擎动词 track=k（sourceSpec 跟随所选轨） ==
+  PASS TRK-002a
+  PASS TRK-002b
+  PASS TRK-002c
+  PASS TRK-003a
+  PASS TRK-003x
+  PASS TRK-003b
+  PASS TRK-003c
+  PASS TRK-003d
+  PASS TRK-004
+  PASS TRK-005
+  PASS TRK-006
+  PASS TRK-007a
+  PASS TRK-007b
+  PASS TRK-007c
+  PASS TRK-007d
+== TRK-008/014：extractAudio 轨标记 + 内部一致性金标准 ==
+  PASS TRK-014a
+  PASS TRK-014b
+  PASS TRK-014c
+  PASS TRK-014d
+  PASS TRK-014f
+  PASS TRK-008a
+  PASS TRK-008b
+  PASS TRK-008c
+  PASS TRK-008d
+  PASS TRK-008e
+  PASS TRK-008f
+  PASS TRK-008g
+  PASS TRK-008h
+  PASS TRK-008i
+  PASS TRK-008j
+  PASS TRK-008k
+== TRK-009：缺省零漂移（不带 track 与改动前基线逐字节一致 + default 旗标轨被缺省选中） ==
+  PASS TRK-009a
+  PASS TRK-009a-z
+  PASS TRK-009b
+  PASS TRK-009b-z
+  PASS TRK-009c
+  PASS TRK-009c-z
+  PASS TRK-009d
+  PASS TRK-009d-z
+  PASS TRK-009e
+  PASS TRK-009e-z
+  PASS TRK-009f
+  PASS TRK-009f-z
+  PASS TRK-009g
+  PASS TRK-009h
+== TRK-010：错误面（信封校验 E_PARAMS / 文件结构事实 E_FILE / 拒收面未知字段） ==
+  PASS TRK-010a
+  PASS TRK-010b
+  PASS TRK-010c
+  PASS TRK-010d
+  PASS TRK-010e
+  PASS TRK-010f
+  PASS TRK-010g
+  PASS TRK-010h
+  PASS TRK-010i
+  PASS TRK-010j
+  PASS TRK-010k
+  PASS TRK-010l
+== TRK-011/012：pipeline 顶层轨参 + fail-fast 时序 ==
+  PASS TRK-011a
+  PASS TRK-011b
+  PASS TRK-011c
+  PASS TRK-011d
+  PASS TRK-011e
+  PASS TRK-011f
+  PASS TRK-011g
+  PASS TRK-011i
+  PASS TRK-012a
+  PASS TRK-012b
+  PASS TRK-012c
+  PASS TRK-012d
+== TRK-013：工作区版本记录（带 track 入 params / 不带 track 键面零漂移） ==
+  PASS TRK-013a
+  PASS TRK-013b
+  PASS TRK-013c
+  PASS TRK-013d
+== TRK-GUI：GUI 面（trk-gui-probe：engine 相槽直调 + gui 相 MainWidget 全链） ==
+  PASS TRK-GUI-101
+  PASS TRK-GUI-102
+  PASS TRK-GUI-201
+  PASS TRK-GUI-202
+  PASS TRK-GUI-203
+== ZD-NET：零漂移回归网（信封/组包/薄壳/GUI 壳面不假红） ==
+  ---- ZD-NET-json: bash docs/acceptance/fr24-command-layer/scripts/run-json.sh build-linux
+== 正例（9 动词形态；48k 跟随源 / engineResampled 可观测，D4）==
+  PASS CMD-001
+  PASS CMD-002
+  PASS CMD-002f（ffprobe pcm_f32le,44100,2）
+  PASS CMD-003
+  PASS CMD-003f（ffprobe pcm_f32le,48000,2）
+  PASS CMD-004
+  PASS CMD-004f（ffprobe pcm_f32le,48000,2）
+  PASS CMD-005
+  PASS CMD-006
+  PASS CMD-006f（ffprobe pcm_f32le,44100,2）
+  PASS CMD-007
+  PASS CMD-007f（ffprobe pcm_f32le,44100,2）
+  PASS CMD-008
+  PASS CMD-009
+  PASS CMD-010
+  PASS CMD-011
+== 确定性（同请求两遍输出 cmp 逐字节一致，NFR-A2 前味）==
+  PASS CMD-012
+== 负例（恒出合法 JSON + 退出码 1 + 响应无 result；错误码分类见 D3）==
+  PASS CMD-020
+  PASS CMD-021
+  PASS CMD-021r（响应原文确定）
+  PASS CMD-022
+  PASS CMD-023
+  PASS CMD-024
+  PASS CMD-025
+  PASS CMD-026
+  PASS CMD-027
+  PASS CMD-028
+  PASS CMD-029
+  PASS CMD-030
+  PASS CMD-031
+  PASS CMD-032
+  PASS CMD-032f
+  PASS CMD-033
+  PASS CMD-033i
+  PASS CMD-034
+  PASS CMD-035
+== run-json 全绿 ==
+  PASS ZD-NET-json
+  ---- ZD-NET-ws: bash docs/acceptance/fr-a4-workspace/scripts/run-ws.sh build-linux
+== WS-CREATE（首任务自动建工作区：目录结构 + 源登记 + 缓存回填）==
+  PASS WS-001
+  PASS WS-002 目录结构 <stem>.<hash8>/v001_denoise/
+  PASS WS-003 版本产物在版本目录内（文件名沿用注册表后缀自描述）
+  PASS WS-004（workspace.json 断言）
+  PASS WS-005 根级缓存回填（path+size+mtimeMs→ws）
+== WS-CREATE（内容哈希身份：同内容换路径=同工作区；同名不同内容=不同工作区）==
+  PASS WS-006
+  PASS WS-007（workspace.json 断言）
+  PASS WS-008
+== WS-CHAIN（追加与链：v001 不可变、head 推进；同工作区 parentVersion；跨工作区哈希衔接）==
+  PASS WS-009
+  PASS WS-010 v001 记录登记后不可变（append-only）
+  PASS WS-011（workspace.json 断言）
+  PASS WS-012
+  PASS WS-013（workspace.json 断言）
+  PASS WS-014
+  PASS WS-015（workspace.json 断言）
+== WS-PROV（来源链完整性：filled 参数 / 模型摘要 / 输出真值 / wsInfo 一致）==
+  PASS WS-016（workspace.json 断言）
+  PASS WS-017（workspace.json 断言）
+  PASS WS-018
+  PASS WS-018b aiDenoise 前后源 sha256 不变（有模型动词也只读，补 WS-RO 面）
+  PASS WS-019（workspace.json 断言）
+  PASS WS-020
+  PASS WS-021（workspace.json 断言）
+  PASS WS-022
+  PASS WS-023 wsInfo 清单与 workspace.json 逐字段一致
+== WS-RO（原件只读不变式：源字节级不变 + 防线负例）==
+  PASS WS-024 工作区任务前后源 sha256 不变（denoise）
+  PASS WS-025 工作区任务前后源 sha256 不变（extractVideo）
+  PASS WS-026
+  PASS WS-027
+  PASS WS-028
+  PASS WS-027 后无产物残留
+== WS-FAIL（失败清理：无版本目录、索引不动、残迹不阻后续）==
+  PASS WS-029
+  PASS WS-029f 根未创建（只读根零残迹）
+  PASS WS-030
+  PASS WS-031 失败后 workspace.json 逐字节不变（索引只在成功后写）
+  PASS WS-032 失败无版本目录残留
+  PASS WS-030b
+  PASS WS-030b-i 索引仍逐字节不变
+  PASS WS-030b-f 版本目录已补删（登记器 owns 生命周期）
+  PASS WS-033
+  PASS WS-034（workspace.json 断言）
+  PASS WS-035
+  PASS WS-036
+  PASS WS-036b
+  PASS WS-036c
+  PASS WS-036d 损坏索引原样未被改写、无新版本目录（真相源不被静默重建/清空）
+== WS-ORPHAN（孤儿目录安全跳过：kill -9 残迹不阻后续、序号不复用）==
+  PASS WS-037
+  PASS WS-038（workspace.json 断言）
+== WS-QUERY（查询面：未登记空清单不落盘 + 参数负例）==
+  PASS WS-039
+  PASS WS-040 查询不落盘（未登记不建目录）
+  PASS WS-041
+  PASS WS-042
+  PASS WS-043
+  PASS WS-044
+  PASS WS-045
+  PASS WS-046
+== WS-TRUNC（截断素材：ok:true + 可解前缀输出；中途 I/O 错分支 e2e 不可构造，见 round-1 映射表）==
+  PASS WS-047
+  PASS WS-048（workspace.json 断言）
+== WS-MEM（内存有界：30min 素材首任务[含全量哈希] vs direct 峰值 RSS 同量级）==
+  峰值 RSS：direct=56.9MiB  workspace=57.9MiB  Δ=1.0MiB
+  PASS WS-049 峰值 RSS 同量级（|Δ|<32MiB，证伪整文件载入假设）
+== run-ws 全绿 ==
+  PASS ZD-NET-ws
+  ---- ZD-NET-models: bash docs/acceptance/fr8-model-management/scripts/run-models.sh build-linux
+  PASS 前置闸-gtcrn
+  PASS 前置闸-uvr
+== MDL-LIST：三视角合并（目录 ∪ models.json ∪ 磁盘） ==
+  PASS MDL-001
+  PASS MDL-002
+  PASS MDL-003
+  PASS MDL-004
+  PASS MDL-005
+  PASS MDL-006
+  PASS MDL-007
+== MDL-DL：下载 → 校验 → 落位 → 登记（幂等） ==
+  PASS MDL-020
+  PASS MDL-020s
+  PASS MDL-020p
+  PASS MDL-020m
+  PASS MDL-020j
+  PASS MDL-021
+  PASS MDL-021z
+  PASS MDL-023
+  PASS MDL-023z
+  PASS MDL-023m
+  PASS MDL-008
+  PASS MDL-009
+  PASS MDL-009b
+  PASS MDL-009m
+== MDL-RESUME：断点续传（.part 跨调用 + Range 请求头 ground truth） ==
+  PASS MDL-030
+  PASS MDL-030p
+  PASS MDL-030s
+  PASS MDL-030g
+  PASS MDL-031
+  PASS MDL-031s
+  PASS MDL-031p
+  PASS MDL-031g
+  PASS MDL-024t
+  PASS MDL-024tn
+  PASS MDL-024ts
+  PASS MDL-032
+  PASS MDL-032s
+== MDL-NEG：失败注入与错误分类（E_NET 域 + 精确 .part 语义；LIBX 全新根防幂等短路） ==
+  PASS MDL-040
+  PASS MDL-041
+  PASS MDL-042
+  PASS MDL-043
+  PASS MDL-043p
+  PASS MDL-044
+  PASS MDL-044p
+  PASS MDL-044d
+  PASS MDL-044m
+  PASS MDL-045
+  PASS MDL-046
+  PASS MDL-047
+  PASS MDL-048
+  PASS MDL-049
+  PASS MDL-049p
+  PASS MDL-050
+  PASS MDL-050p
+  PASS MDL-051
+  PASS MDL-051d
+  PASS MDL-052
+== MDL-IMPORT：复制进库（by-id 指纹 / 自由导入试开） ==
+  PASS MDL-060
+  PASS MDL-060s
+  PASS MDL-060i
+  PASS MDL-060p
+  PASS MDL-060m
+  PASS MDL-061
+  PASS MDL-061p
+  PASS MDL-061x
+  PASS MDL-062
+  PASS MDL-062s
+  PASS MDL-063
+  PASS MDL-063p
+  PASS MDL-062c
+  PASS MDL-062cz
+  PASS MDL-062b
+  PASS MDL-062bm
+  PASS MDL-062bn
+  PASS MDL-062u
+  PASS MDL-062r
+  PASS MDL-062r2
+  PASS MDL-062rm
+  PASS MDL-062rs
+  PASS MDL-064
+  PASS MDL-065
+  PASS MDL-066
+  PASS MDL-069
+  PASS MDL-070
+  PASS MDL-067
+  PASS MDL-067p
+  PASS MDL-010
+  PASS MDL-010z
+== MDL-ENVELOPE：信封分叉零漂移（requiresInput 命门） ==
+  PASS MDL-080
+  PASS MDL-081
+  PASS MDL-081r（响应原文逐字节一致）
+  PASS MDL-082
+  PASS MDL-082b
+  PASS MDL-083
+  PASS MDL-084
+== MDL-CANCEL：取消语义（探针直调；CLI 单发无取消通道） ==
+  PASS MDL-090（预置取消：零网络请求）
+  PASS MDL-091（中段取消：.part 保留作续传缓存）
+  PASS MDL-092
+  PASS MDL-092g
+  PASS MDL-093（导入复制环取消：E_CANCELLED + .part 即删 + 零落位）
+== GML：FR-8 片 B GUI 面（两级缺省解析/结构化 modelMissing/对话框全链；探针 mdl-gui-probe） ==
+== GML 探针编译（mdl-gui-probe：offscreen QApplication 驱动 MainWidget/MediaService 全链）==
+== GML-E：两级缺省解析（D1：库已装 → appDir bundled）+ modelMissing 触发面（D8） ==
+  PASS GML-101
+  PASS GML-101m
+  PASS GML-101p
+  PASS GML-102
+  PASS GML-102p
+  PASS GML-102m
+  PASS GML-103
+  PASS GML-103bt
+  PASS GML-103b
+  PASS GML-104
+  PASS GML-105
+  PASS GML-106
+  PASS GML-106p
+  PASS GML-107
+  PASS GML-107m
+  PASS GML-101n
+  PASS GML-101nm
+== GML-G：对话框全链（offscreen；XDG_CONFIG_HOME 隔离 QSettings；节流服务拉长传输窗） ==
+  PASS GML-110
+  PASS GML-110n
+  PASS GML-110r
+  PASS GML-110t
+  PASS GML-110c
+  PASS GML-111
+  PASS GML-112
+  PASS GML-113
+  PASS GML-113p
+  PASS GML-113u
+  PASS GML-114e
+  PASS GML-114
+  PASS GML-114d
+  PASS GML-115
+  PASS GML-115s
+  PASS GML-115r
+  PASS GML-115f
+  PASS GML-116
+  PASS GML-116i
+  PASS GML-116r
+  PASS GML-116f
+  PASS GML-116g
+  PASS GML-117
+  PASS GML-118
+  PASS GML-118s
+  PASS GML-119
+== 完整性终闸（fixture 与 third_party 未被改动；红线：不动 third_party/） ==
+  PASS MDL-999
+== run-models 全绿 ==
+  PASS ZD-NET-models
+  ---- ZD-NET-pipe: bash docs/acceptance/fr9-pipeline/scripts/run-pipe.sh build-linux
+== PIPE-OK（正例链：两步/三步/带模型；result 结构 + 落位 + 中间产物体检）==
+  PASS PIPE-OK-001
+  PASS PIPE-OK-002
+  PASS PIPE-OK-003 版本目录落位 v001_denoise/ + v002_pitch/
+  PASS PIPE-OK-004（ffprobe pcm_f32le,48000,2）
+  PASS PIPE-OK-005（ffprobe pcm_f32le,48000,2）
+  PASS PIPE-OK-006（workspace.json 断言）
+  PASS PIPE-OK-007
+  PASS PIPE-OK-008
+  PASS PIPE-OK-009（ffprobe pcm_f32le,44100,2）
+  PASS PIPE-OK-010（ffprobe pcm_f32le,44100,2）
+== PIPE-EQV（编排等价核心护栏：管线跑 vs 逐步手动跑，逐字节一致）==
+  PASS PIPE-EQV-001
+  PASS PIPE-EQV-002
+  PASS PIPE-EQV-003
+  PASS PIPE-EQV-004
+  PASS PIPE-EQV-005
+  PASS PIPE-EQV-006
+  PASS PIPE-EQV-007
+  PASS PIPE-EQV-008
+  PASS PIPE-EQV-009
+== PIPE-CHAIN（版本链与标记：pipeline 标记/parentVersion/无关任务交错/缓存删除续定位）==
+  PASS PIPE-CHAIN-001
+  PASS PIPE-CHAIN-002
+  PASS PIPE-CHAIN-003
+  PASS PIPE-CHAIN-004（workspace.json 断言）
+  PASS PIPE-CHAIN-005（workspace.json 断言）
+  PASS PIPE-CHAIN-006
+== PIPE-PREVAL（整链静态预校验：开工前拦截，零执行零产物）==
+  PASS PIPE-PREVAL-001
+  PASS PIPE-PREVAL-002
+  PASS PIPE-PREVAL-003
+  PASS PIPE-PREVAL-004
+  PASS PIPE-PREVAL-005
+  PASS PIPE-PREVAL-006
+  PASS PIPE-PREVAL-007
+== PIPE-FAIL（部分失败：步 2 坏模型 → 归属 + 已提交步保留 + 无残迹 + 重跑起新号）==
+  PASS PIPE-FAIL-001
+  PASS PIPE-FAIL-002 工作区目录在（步 1 已登记）
+  PASS PIPE-FAIL-003（workspace.json 断言）
+  PASS PIPE-FAIL-004
+  PASS PIPE-FAIL-005
+  PASS PIPE-FAIL-006
+  PASS PIPE-FAIL-007（workspace.json 断言）
+  PASS PIPE-FAIL-008
+== PIPE-NEG（schema 负例：steps 形态/链级键/内置动词/缺 workspace，逐条消息断言）==
+  PASS PIPE-NEG-001
+  PASS PIPE-NEG-002
+  PASS PIPE-NEG-003
+  PASS PIPE-NEG-004
+  PASS PIPE-NEG-005
+  PASS PIPE-NEG-006
+  PASS PIPE-NEG-007
+  PASS PIPE-NEG-008
+  PASS PIPE-NEG-009
+  PASS PIPE-NEG-010
+  PASS PIPE-NEG-011
+  PASS PIPE-NEG-012
+  PASS PIPE-NEG-013
+  PASS PIPE-NEG-014
+  PASS PIPE-NEG-015
+  PASS PIPE-NEG-016
+  PASS PIPE-NEG-017
+  PASS PIPE-NEG-018
+  PASS PIPE-NEG-019 schema 错误不带 step/stepCmd（归属键只随步骤级错误）
+== PIPE-CANCEL/PROG（取消与进度：探针直调 execute 的 Ctx 注入面，四相）==
+== 探针编译（pipe-cancel-probe.cpp，链主树 libengine.a；陈旧库闸同 gui-ws）==
+  PASS PIPE-CAN-001 cancel-pre（E_CANCELLED/「已取消」逐字/step=1/零进度）
+  PASS PIPE-CAN-002
+  PASS PIPE-CAN-003 cancel-mid（step=1，首进度点即取消）
+  PASS PIPE-CAN-004
+  PASS PIPE-CAN-005 cancel-between（step=2/「已取消」逐字/进度止于映射 50）
+  PASS PIPE-CAN-006（workspace.json 断言）
+  PASS PIPE-PROG-001 进度等分映射（终值 100/单调/步界 33·66）
+== PIPE-GUIE（GUI worker 壳：doPipeline 槽直调，附裁 1 的 forVerb=stepCmd 实证）==
+  PASS PIPE-GUIE-001 ok-chain（管线完成文案/进度 100/产物在盘/无 modelMissing）
+  PASS PIPE-GUIE-002（workspace.json 断言）
+  PASS PIPE-GUIE-003 missing-step1（找不到模型文案 + modelMissing(aiDenoise)）
+  PASS PIPE-GUIE-004 emid-chain（E_MODEL 步骤归属 + forVerb=aiDenoise 附裁 1）
+  PASS PIPE-GUIE-005 emid-negative（E_FILE 不触发 modelMissing）
+  PASS PIPE-GUIE-006 cancel-between（「已取消」逐字）
+  PASS PIPE-GUIE-007（workspace.json 断言）
+== PIPE-MEM（内存抽测：30min 两步链峰值 = 逐步最大值而非和，NFR-P4/D1）==
+  峰值 RSS：管线两步链=60452KB / denoise=61664KB / pitch=58688KB（单动词最大=61664KB）
+  同量级实证：管线 60452KB ≤ 单动词最大 61664KB + 32MB 且 < 256MB
+  PASS PIPE-MEM-001 管线峰值与最重单动词同量级（远低于整文件 regime）
+  PASS PIPE-MEM-002
+== PIPE-MEM 带模型链（120s aiDenoise→separate：GTCRN 会话零叠加，审查轮 P2-1 补面）==
+  PASS PIPE-MEM-003 带模型链实跑成功（峰值断言前置防空转）
+  峰值 RSS：模型两步链=1519944KB / aiDenoise=86928KB / separate=1516152KB（单动词最大=1516152KB）
+  同量级实证：模型链 1519944KB ≤ 单动词最大 1516152KB + 32MB 且 < 2GiB（NFR-P4，GTCRN 会话随遍释放零叠加）
+  PASS PIPE-MEM-004 带模型链峰值与最重单动词同量级（D1 模型会话零叠加 + NFR-P4）
+== run-pipe 全绿 ==
+  PASS ZD-NET-pipe
+  ---- ZD-NET-batch: bash docs/acceptance/fr10-batch-queue/scripts/run-batch.sh build-linux
+== BATCH-OK（正例批：3 件两步模板 / 单步模板 / 带模型批；result 结构 + 落位 + 体检）==
+  PASS BATCH-OK-001
+  PASS BATCH-OK-002 三件三个工作区（互异）
+  PASS BATCH-OK-003
+  PASS BATCH-OK-004（ffprobe pcm_f32le,44100,2）
+  PASS BATCH-OK-005（ffprobe pcm_f32le,48000,2）
+  PASS BATCH-OK-006（ffprobe pcm_f32le,44100,1）
+  PASS BATCH-OK-007
+  PASS BATCH-OK-008
+  PASS BATCH-OK-009（ffprobe pcm_f32le,44100,2）
+  PASS BATCH-OK-010
+== BATCH-EQV（编排等价核心护栏：批跑 vs 逐件手动跑 pipeline，逐字节一致）==
+  PASS BATCH-EQV-001
+  PASS BATCH-EQV-m0
+  PASS BATCH-EQV-2a
+  PASS BATCH-EQV-2b
+  PASS BATCH-EQV-m1
+  PASS BATCH-EQV-3a
+  PASS BATCH-EQV-3b
+  PASS BATCH-EQV-m2
+  PASS BATCH-EQV-4a
+  PASS BATCH-EQV-4b
+  PASS BATCH-EQV-008
+  PASS BATCH-EQV-n0
+  PASS BATCH-EQV-9
+  PASS BATCH-EQV-n1
+  PASS BATCH-EQV-10
+  PASS BATCH-EQV-SR1
+  PASS BATCH-EQV-SRs0
+  PASS BATCH-EQV-SRc0
+  PASS BATCH-EQV-SRs1
+  PASS BATCH-EQV-SRc1
+  PASS BATCH-EQV-SRs2
+  PASS BATCH-EQV-SRc2
+== BATCH-FAIL（失败不中断：件错误原文透传 + 幸存件落盘 + 全败批 ok 口径 + 步骤归属透传）==
+  PASS BATCH-FAIL-001
+  PASS BATCH-FAIL-002 件错误无「第 N 件」前缀（附裁 3）
+  PASS BATCH-FAIL-003
+  PASS BATCH-FAIL-004
+  PASS BATCH-FAIL-005
+  PASS BATCH-FAIL-006（workspace.json 断言）
+== BATCH-NEG（schema 负例：逐条消息断言 + 开工前拦截零副作用）==
+  PASS BATCH-NEG-001
+  PASS BATCH-NEG-002
+  PASS BATCH-NEG-003
+  PASS BATCH-NEG-004
+  PASS BATCH-NEG-005
+  PASS BATCH-NEG-006
+  PASS BATCH-NEG-007
+  PASS BATCH-NEG-008
+  PASS BATCH-NEG-009
+  PASS BATCH-NEG-010
+  PASS BATCH-NEG-011
+  PASS BATCH-NEG-012
+  PASS BATCH-NEG-013
+  PASS BATCH-NEG-014
+  PASS BATCH-NEG-015
+  PASS BATCH-NEG-016
+  PASS BATCH-NEG-017
+  PASS BATCH-NEG-018
+  PASS BATCH-NEG-019
+  PASS BATCH-NEG-020
+  PASS BATCH-NEG-021
+  PASS BATCH-NEG-022
+  PASS BATCH-NEG-023
+  PASS BATCH-NEG-024
+  PASS BATCH-NEG-025
+  PASS BATCH-NEG-026
+  PASS BATCH-NEG-027
+  PASS BATCH-NEG-028 schema 错误不带 step/stepCmd（归属键只随步骤级错误）
+  PASS BATCH-NEG-029
+  PASS BATCH-NEG-030
+== BATCH-WS（工作区隔离与 batch 标记：件间隔离/双键/同内容续号/缓存删除/非批零新键）==
+  PASS BATCH-WS-001（workspace.json 断言）
+  PASS BATCH-WS-002（workspace.json 断言）
+  PASS BATCH-WS-003（workspace.json 断言）
+  PASS BATCH-WS-004（workspace.json 断言）
+  PASS BATCH-WS-005
+  PASS BATCH-WS-006
+  PASS BATCH-WS-007（workspace.json 断言）
+  PASS BATCH-WS-008
+  PASS BATCH-WS-009
+  PASS BATCH-WS-010（workspace.json 断言）
+  PASS BATCH-WS-011
+  PASS BATCH-WS-012
+  PASS BATCH-WS-013
+== BATCH-CANCEL/PROG（取消与进度：探针直调 execute 的 Ctx 注入面，五相）==
+== 探针编译（batch-cancel-probe.cpp，链主树 libengine.a；陈旧库闸同 run-pipe）==
+  PASS BATCH-CAN-001 cancel-pre（E_CANCELLED/「已取消」逐字/completed=0/total=2/零进度）
+  PASS BATCH-CAN-002
+  PASS BATCH-CAN-003 cancel-mid（件 1 在途取消，completed=0）
+  PASS BATCH-CAN-004
+  PASS BATCH-CAN-005 cancel-between（completed=1/「已取消」逐字/进度止于映射 50）
+  PASS BATCH-CAN-006（workspace.json 断言）
+  PASS BATCH-PROG-001 件层等分映射（终值 100/单调/件界 33·66）
+  PASS BATCH-PROG-002 两层等分复合映射（边界 25·50·75·100）
+== BATCH-GUIE（GUI worker 壳：doBatch 槽直调，附裁 1 的顺序与禁发面）==
+  PASS BATCH-GUIE-001 ok-batch（载荷 JSON/恰一次/进度 100/无 modelMissing）
+  PASS BATCH-GUIE-002 missing-pre（找不到模型文案 + modelMissing(aiDenoise) + B→M 顺序）
+  PASS BATCH-GUIE-003
+  PASS BATCH-GUIE-004 emid-item（okCount=0 且 ok=1 + 零 modelMissing，Y5 封堵）
+  PASS BATCH-GUIE-005 cancel（「已取消」逐字）
+  PASS BATCH-GUIE-006（workspace.json 断言）
+== BATCH-MEM（内存抽测：2 件 × 30min 批峰值 = 件·步最大值而非叠加，NFR-P4/D1）==
+  PASS BATCH-MEM-001 批实跑成功（峰值断言前置防空转）
+  峰值 RSS：2 件批（denoise+pitch）=62288KB / denoise=61504KB / pitch=58924KB（单动词最大=61504KB）
+  同量级实证：批 62288KB ≤ 单动词最大 61504KB + 32MB 且 < 256MB（件串行×步串行零叠加）
+  PASS BATCH-MEM-002 批峰值与最重单动词同量级（远低于整文件 regime）
+== BATCH-MEM 带模型批（2 件 × 120s aiDenoise→separate：模型会话跨件零叠加）==
+  PASS BATCH-MEM-003 带模型批实跑成功（防空转前置）
+  峰值 RSS：模型两步批=1547384KB / aiDenoise=86604KB / separate=1516288KB（单动词最大=1516288KB）
+  同量级实证：模型批 1547384KB ≤ 单动词最大 1516288KB + 32MB 且 < 2GiB（模型会话随遍释放零叠加）
+  PASS BATCH-MEM-004 带模型批峰值与最重单动词同量级（NFR-P4）
+== run-batch 全绿 ==
+  PASS ZD-NET-batch
+  ---- ZD-NET-guiws: bash docs/acceptance/fr-a4-workspace/scripts/gui-ws.sh build-linux
+== 探针编译（gui-ws-probe.cpp，链主树 libengine.a；模型落 bin 侧供 appDir 相对解析）==
+== 素材（run-ws 同配方：44.1k 立体声 + 双流 mp4 + 取消用副本，两份互不影响）==
+== ws 相（七槽 + 历史查询 + 继续链 + probe）==
+  PASS ws 相运行（退出码）
+  PASS GWS-001 extractAudio（ok=1 + 文案格式不变 + <root>/<工作区>/vNNN_<cmd>/<产物>）
+  PASS GWS-001 extractVideo（ok=1 + 文案格式不变 + <root>/<工作区>/vNNN_<cmd>/<产物>）
+  PASS GWS-001 denoise（ok=1 + 文案格式不变 + <root>/<工作区>/vNNN_<cmd>/<产物>）
+  PASS GWS-001 aiDenoise（ok=1 + 文案格式不变 + <root>/<工作区>/vNNN_<cmd>/<产物>）
+  PASS GWS-001 pitch（ok=1 + 文案格式不变 + <root>/<工作区>/vNNN_<cmd>/<产物>）
+  PASS GWS-001 sep-vocals（ok=1 + 文案格式不变 + <root>/<工作区>/vNNN_<cmd>/<产物>）
+  PASS GWS-001 sep-inst（ok=1 + 文案格式不变 + <root>/<工作区>/vNNN_<cmd>/<产物>）
+  PASS GWS-001 chain-denoise（ok=1 + 文案格式不变 + <root>/<工作区>/vNNN_<cmd>/<产物>）
+  PASS GWS-001 CHAIN 继续链输入回拼（result.dir + v001 记录相对路径）
+  PASS GWS-001b 版本目录与产物在盘（tiny.69a2d32c/v001_extractAudio/tiny_audio.m4a）
+  PASS GWS-001b 版本目录与产物在盘（tiny.69a2d32c/v002_extractVideo/tiny_mute.mp4）
+  PASS GWS-001b 版本目录与产物在盘（st.0b2bb088/v001_denoise/st_denoised.wav）
+  PASS GWS-001b 版本目录与产物在盘（st.0b2bb088/v002_aiDenoise/st_ai.wav）
+  PASS GWS-001b 版本目录与产物在盘（st.0b2bb088/v003_pitch/st_pitch.wav）
+  PASS GWS-001b 版本目录与产物在盘（st.0b2bb088/v004_separate/st_vocals.wav）
+  PASS GWS-001b 版本目录与产物在盘（st.0b2bb088/v005_separate/st_instrumental.wav）
+  PASS GWS-001b 版本目录与产物在盘（st.0b2bb088/v006_denoise/st_denoised_denoised.wav）
+  PASS GWS-002 st 工作区 head=6、versions=6（多动词串行追加）
+  PASS GWS-002 版本动词序列正确
+  PASS GWS-002 parentVersion 链（继续链 v006←v001，前 5 版无父）
+  PASS GWS-002 tiny 工作区 head=2、versions=2（extract 族入工作区）
+  PASS GWS-004 wsInfo 回传 result 与 workspace.json 深度一致 + 全部版本产物（含继续回拼路径）在盘
+  PASS GWS-007 probe 槽在 root 注入后仍正常（探测文案照常）
+== cancel 相（spec §6-5 取消 GUI 面收口）==
+  PASS cancel 相运行（退出码）
+  PASS GWS-006 cancel-denoise「已取消」文案直通（mainwidget 特判字符串命中）
+  PASS GWS-006 cancel-extractAudio「已取消」文案直通
+  PASS GWS-006 st 工作区索引逐字节不变
+  PASS GWS-006 tiny 工作区索引逐字节不变
+  PASS GWS-006 st 无版本目录残留（恰 v001..v006）
+  PASS GWS-006 tiny 无版本目录残留（恰 v001..v002）
+== direct 相（默认不 setWorkspaceRoot = direct 形状，与 fr24 等价双跑互证）==
+  PASS direct 相运行（退出码）
+  PASS GWS-005 direct 产物落源目录（tiny_audio.m4a，fr24 GUI-PRD 同形状）
+  PASS GWS-005 direct 产物落源目录（tiny_mute.mp4，fr24 GUI-PRD 同形状）
+  PASS GWS-005 direct 产物落源目录（st_denoised.wav，fr24 GUI-PRD 同形状）
+  PASS GWS-005b GUI 槽 direct 产物与 CLI 直跑逐字节一致（跨面互证，未插键）
+  PASS GWS-007b direct 相 probe 正常
+== adv 相（对抗增补，round-3：换根/中文路径/wsInfo 失败载荷/置空回 direct）==
+  PASS adv 相运行（退出码）
+  PASS GWS-008 换根只影响后续任务（root1/root2 各自 v001 且各恰 1 版本，同内容两根互不可见）
+  PASS GWS-009 中文根+中文素材直通（工作区名/产物名带中文 stem）
+  PASS GWS-010 doWsInfo 对不在盘输入回失败载荷（ok=0 + 非空错误说明）
+  PASS GWS-011 注入后置空串回 direct（产物落源目录且 rootcn 仍 head=1，与 GWS-005 默认空串对称）
+== GWS-003 原件只读（各相全程结束后源文件 sha256 不变）==
+  PASS GWS-003 st.wav 前后 sha256 不变
+  PASS GWS-003 tiny.mp4 前后 sha256 不变
+== gui-ws 全绿 ==
+  PASS ZD-NET-guiws
+  ---- ZD-NET-guipipe: bash docs/acceptance/fr9-pipeline/scripts/gui-pipe.sh build-linux
+== 探针编译（pipe-gui-probe.cpp gui 模式：offscreen MainWidget/MediaService 全链）==
+== 素材（run-ws 同配方）与 bin 布局（appDir 缺省解析的模型位）==
+== PIPE-GUI-G：widget 全链（预设组包 + busy 锁 + 成功文案）==
+  PASS PIPE-GUI-001 文件载入后一键按钮解禁
+  PASS PIPE-GUI-002..005 三条预设组包（动态参数注入：humBase/wind/semi 逐项）
+  PASS PIPE-GUI-006 busy 锁覆盖新按钮（4 case 提交即锁/完成即解）
+  PASS PIPE-GUI-007 成功文案「管线完成：<终产物路径>」
+== gui-pipe 全绿 ==
+  PASS ZD-NET-guipipe
+  ---- ZD-NET-guibatch: bash docs/acceptance/fr10-batch-queue/scripts/gui-batch.sh build-linux
+== 探针编译（gui-batch-probe.cpp：offscreen MainWidget/MediaService 全链）==
+== 素材（run-batch 同配方）与 bin 布局（appDir 缺省解析的模型位）==
+== BATCH-GUI-P（widget 全链主路径：组包 + busy 全批覆盖 + 文案 + 渲染 + 取消静默）==
+  PASS BATCH-GUI-001 控件面就绪（清单/动作组合 8 条=5 单步+3 预设，OQ-6(a)）
+  PASS BATCH-GUI-002..012 组包断言（8 动作 × 动态参数注入 + mixed/cancel 清单透传，深度比对）
+  PASS BATCH-GUI-013 busy 锁全批覆盖（11 case 提交即锁/完成即解）
+  PASS BATCH-GUI-014 批运行中锁持续（首个进度回调采样全锁；denoff 预校验失败零进度）
+  PASS BATCH-GUI-003b denoff 失败面（引擎原文透传 + 行不渲染）
+  PASS BATCH-GUI-015 完成文案「批处理完成：2/2 件成功」（信息弹窗逐字，附裁 5）
+  PASS BATCH-GUI-016 混合败件完成文案「批处理完成：1/2 件成功」
+  PASS BATCH-GUI-017 清单逐件渲染（成功（版本 N）/失败：E_FILE：原文，index 对位）
+  PASS BATCH-GUI-018 「已取消」静默（零弹窗/状态行逐字/行不渲染）
+  PASS BATCH-GUI-019 批进度终值 100（主进度条满格代理；denoff 零进度）
+== BATCH-GUI-M（缺模型引导 widget 面：开工前速断 + 双弹窗 + busy 释放）==
+  PASS BATCH-GUI-020 缺模型开工前速断（警告+问询双弹窗/模型管理打开/busy 已释放）
+  PASS BATCH-GUI-021 缺模型整批速断零件启动（零工作区目录）
+== BATCH-GUI-A（多选对话框应答段：尽力，offscreen 不落定则记档降级）==
+  PASS BATCH-GUI-022 多选对话框应答（行编辑引号多填 + AcceptRole，清单 2 件序正确）
+== gui-batch 全绿 ==
+  PASS ZD-NET-guibatch
+  ---- ZD-NET-sloteqv: bash docs/acceptance/fr24-command-layer/scripts/gui-slot-eqv.sh fd7badb build-linux
+== 基线树 fd7badb 构建（worktree，借用主仓 third_party 软链）==
+准备工作区（分离头指针 fd7badb）
+== 探针编译（同一源码，双树各链一份）==
+== 素材（同配方双份：44.1k/48k 正弦 + 双流 mp4 + 取消用副本）==
+== 双跑两相对照（QT_QPA_PLATFORM=offscreen；模型在 A 相跑完后才落位，保证缺模型分支真实行使）==
+  PASS 旧侧运行 nomodel（退出码）
+  PASS 新侧运行 nomodel（退出码）
+  PASS GUI-EQV 转录逐字一致（nomodel：文案+进度序列，15 槽次）
+  PASS GUI-EQV 缺模型分支真实行使（A 相：ai/sep ok=0 + GUI 原文案入转录）
+  PASS 旧侧运行 withmodel（退出码）
+  PASS 新侧运行 withmodel（退出码）
+  PASS GUI-EQV 转录逐字一致（withmodel：文案+进度序列，16 槽次）
+  PASS GUI-EQV 带模型分支真实行使（B 相：ai/sep ok=1）
+  PASS GUI-CXL「已取消」经 E_CANCELLED message 直通（denoise/extract 双路）
+== 产物逐字节对照（run B 落盘件）==
+  PASS GUI-PRD tiny_audio.m4a（27630B cmp 一致）
+  PASS GUI-PRD tiny_mute.mp4（105383B cmp 一致）
+  PASS GUI-PRD st_denoised.wav（1764092B cmp 一致）
+  PASS GUI-PRD st48_denoised.wav（1920092B cmp 一致）
+  PASS GUI-PRD st_pitch.wav（1764092B cmp 一致）
+  PASS GUI-PRD st_ai.wav（1761276B cmp 一致）
+  PASS GUI-PRD st_vocals.wav（1764092B cmp 一致）
+  PASS GUI-PRD st_instrumental.wav（1764092B cmp 一致）
+  PASS GUI-CXL 取消无半成品残留（NFR-R1）
+== gui-slot-eqv 全绿 ==
+  PASS ZD-NET-sloteqv
+  ---- ZD-NET-thinshell: bash docs/acceptance/fr24-command-layer/scripts/thinshell-eqv.sh 1d61dcf build-linux
+== 基线构建：git worktree add 1d61dcf → /tmp/vh-eqv.GK2PXY/base（third_party 软链共享）==
+准备工作区（分离头指针 1d61dcf）
+== 成功路径（8 动词形态 + 48k + 显式/缺省模型）==
+  PASS eqv-transcode-44k（rc=0；stdout 逐字一致；产物 cmp 一致）
+  PASS eqv-denoise-44k（rc=0；stdout 逐字一致；产物 cmp 一致）
+  PASS eqv-denoise-hum60（rc=0；stdout 逐字一致；产物 cmp 一致）
+  PASS eqv-ai-model（rc=0；stdout 逐字一致；产物 cmp 一致）
+  PASS eqv-ai-default（rc=0；stdout 逐字一致；产物 cmp 一致）
+  PASS eqv-pitch-pos（rc=0；stdout 逐字一致；产物 cmp 一致）
+  PASS eqv-pitch-neg（rc=0；stdout 逐字一致；产物 cmp 一致）
+  PASS eqv-sep-vocals（rc=0；stdout 逐字一致；产物 cmp 一致）
+  PASS eqv-sep-inst（rc=0；stdout 逐字一致；产物 cmp 一致）
+  PASS eqv-extract-audio（rc=0；stdout 逐字一致；产物 cmp 一致）
+  PASS eqv-extract-video（rc=0；stdout 逐字一致；产物 cmp 一致）
+  PASS eqv-transcode-48k（rc=0；stdout 逐字一致；产物 cmp 一致）
+== 失败路径（文案逐字保持；产物占位传空 → 断言双方均无产物）==
+  PASS f-den-hum61（rc=1；stdout 逐字一致；产物 cmp 一致）
+  PASS f-ai-nomodel（rc=1；stdout 逐字一致；产物 cmp 一致）
+  PASS f-transcode-u（rc=1；stdout 逐字一致；产物 cmp 一致）
+  PASS f-noaudio（rc=1；stdout 逐字一致；产物 cmp 一致）
+== 薄壳等价全绿：基线 1d61dcf vs 新薄壳，stdout/退出码/产物三方一致 ==
+  PASS ZD-NET-thinshell
+== TRK 全绿 ==
+== ci-smoke 全绿 ==

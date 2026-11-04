@@ -18,6 +18,10 @@ struct ProbeStream {
     QString codec;
     int width = 0, height = 0;// 视频流才有
     int sampleRate = 0, channels = 0;// 音频流才有
+    QString language;// 音频流元数据 language（有则非空；FR-1 D2：轨道下拉渲染/Agent 决策辅助，不作寻址键；"und" 封装器占位归一为空）
+    QString title;// 音频流元数据 title（有则非空）
+    bool hasDefaultFlag = false;// disposition 原始含 AV_DISPOSITION_DEFAULT（probeInfo 填充期内部用）
+    bool defaultTrack = false;// 缺省旗标轨（best-stream 评分序首位，D2 语义）：旗标置位且非全音轨命中（全命中=封装器缺省无区分度，round-1 归一）
 };
 
 struct ProbeInfo {
@@ -41,6 +45,9 @@ struct ProbeInfo {
 // FR-10：doBatch 槽收件清单 + 共享模板两 JSON——开工前 resolveStepModels 一次解析（模板全批共享，
 // 附裁 1：解析失败 → batchFinished + modelMissing(动词) 整批速断，件循环内禁止再发）；批占 busy
 // 整批一锁，完成走 batchFinished（ok 时载批 result JSON，GUI 逐件渲染）
+// FR-1 多音轨选择：任务槽尾参 track（≥0 才组请求键，缺省 -1 = best-stream 语义零漂移）；
+// doProbe 单遍探测双发射——probeDone 文本逐字零漂移 + probeInfoDone 结构化 JSON（wsInfoDone 同型
+// 只读信号，GUI 据此建轨道下拉）；doBatch 不收 track（绝对索引是文件级属性，共享模板跨异构文件无意义）
 class FFExtractor : public QObject
 {
     Q_OBJECT
@@ -50,9 +57,11 @@ public:
     static bool probe(const QString& inPath, QString* info);// 探测文件流信息（中文渲染文本），false 时 info 为错误说明；槽/GUI 兼容面
     static bool probeInfo(const QString& inPath, ProbeInfo* info, QString* err);// 结构化探测，false 时 err 为错误说明
     static QString probeText(const ProbeInfo& info);// 结构化信息 → 现有中文渲染（逐字平移，GUI 展示不变）
+    static QJsonObject probeJson(const ProbeInfo& info);// 结构化信息 → 命令层 probe result（FR-1 D5 单源：cmdProbe 与 doProbe 双发射共用，防双源漂移；条件插键——language/title/defaultTrack 空/假不插，老素材响应逐字节零漂移）
     static QString extractAudio(const QString& inPath, ErrInfo* err, const std::function<void(int)>& onProgress = {},
                                 const std::atomic<bool>* cancel = nullptr,
-                                const QString& outPath = {}, const QString& outDir = {});// 提取音轨，成功返回输出路径；outPath 空 = 自动命名（outDir 空 = 源目录，非空 = 命名规则跑在该目录内，FR-A4 工作区接管落盘）
+                                const QString& outPath = {}, const QString& outDir = {},
+                                int track = -1);// 提取音轨，成功返回输出路径；outPath 空 = 自动命名（outDir 空 = 源目录，非空 = 命名规则跑在该目录内，FR-A4 工作区接管落盘）；track（FR-1）= 容器内音频流绝对索引，≥0 时缺省名插 _t<N> 段（OQ-4 拍板：显式轨不同产物不得同名静默覆盖），无 track 命名逐字节不变
     static QString extractVideo(const QString& inPath, ErrInfo* err, const std::function<void(int)>& onProgress = {},
                                 const std::atomic<bool>* cancel = nullptr,
                                 const QString& outPath = {}, const QString& outDir = {});// 提取无声视频；outPath 空 = 自动命名（outDir 语义同 extractAudio）
@@ -68,6 +77,7 @@ signals:
     void progress(int pct);// 任务进度百分比
     void jobDone(bool ok, const QString& message);// 任务完成通知
     void probeDone(bool ok, const QString& info);// 文件探测完成
+    void probeInfoDone(bool ok, const QString& json);// 结构化探测完成（FR-1 D5：ok 时 json 为 probe result 的 Compact JSON，失败为空串——下拉不建/清空不留旧文件轨；与 probeDone 同遍探测双发射）
     void wsInfoDone(bool ok, const QString& json);// 处理历史查询完成（ok 时 json 为 result 的 Compact JSON，失败为错误说明）
     void modelListDone(bool ok, const QString& json);// 模型列表查询完成（wsInfoDone 同型：ok 时 json 为 result 的 Compact JSON，失败为错误说明）
     void modelOpDone(bool ok, const QString& message);// 模型下载/导入完成（长任务占 busy，MediaService 据此放锁；message 为壳重建文案或 error.message 直通）
@@ -80,13 +90,13 @@ public slots:
     void doModelList();// 后台模型列表查询（modelList 只读动词，不占 busy，doWsInfo 同型；root 取注入成员）
     void doModelDownload(const QString& id, const QString& endpoint);// 后台模型下载（占 busy：取消/进度经 Ctx，root 取注入成员）
     void doModelImport(const QString& path, const QString& forVerb);// 后台模型导入（自由导入带 for，D6 形态 2；占 busy，root 取注入成员）
-    void doExtractAudio(const QString& inPath);// 后台提取音轨
-    void doExtractVideo(const QString& inPath);// 后台提取无声视频
-    void doProbe(const QString& inPath);// 后台探测文件流信息
-    void doDenoiseWav(const QString& inPath, HumBase humBase, bool removeWind);// 后台降噪转码
-    void doDenoiseAiWav(const QString& inPath, bool quality = false);// 后台 AI 降噪转码（FR-4：false=GTCRN 快速档 / true=DeepFilterNet3 质量档；缺省快速档 = 旧单参调用面零漂移）
-    void doPitchWav(const QString& inPath, double semiTones);// 后台变调转码（SoundTouch）
-    void doSepVocals(const QString& inPath, bool instrumental);// 后台人声分离/伴奏提取转码（MDX-Net）
-    void doPipeline(const QString& inPath, const QString& stepsJson);// 后台管线一键（FR-9：解析 steps → 模型步两级缺省解析 → 组 pipeline 请求走 runRequest）
+    void doExtractAudio(const QString& inPath, int track = -1);// 后台提取音轨（FR-1 track：≥0 选定容器内音频流绝对索引）
+    void doExtractVideo(const QString& inPath);// 后台提取无声视频（FR-1：extractVideo 拒收 track，无轨参）
+    void doProbe(const QString& inPath);// 后台探测文件流信息（单遍双发射：probeDone + probeInfoDone）
+    void doDenoiseWav(const QString& inPath, HumBase humBase, bool removeWind, int track = -1);// 后台降噪转码
+    void doDenoiseAiWav(const QString& inPath, bool quality = false, int track = -1);// 后台 AI 降噪转码（FR-4：false=GTCRN 快速档 / true=DeepFilterNet3 质量档；缺省快速档 = 旧单参调用面零漂移）
+    void doPitchWav(const QString& inPath, double semiTones, int track = -1);// 后台变调转码（SoundTouch）
+    void doSepVocals(const QString& inPath, bool instrumental, int track = -1);// 后台人声分离/伴奏提取转码（MDX-Net）
+    void doPipeline(const QString& inPath, const QString& stepsJson, int track = -1);// 后台管线一键（FR-9：解析 steps → 模型步两级缺省解析 → 组 pipeline 请求走 runRequest；FR-1 track：顶层轨参随请求入，命令层仅注步 1）
     void doBatch(const QString& inputsJson, const QString& stepsJson);// 后台批处理（FR-10：解析两 JSON → 开工前模板模型解析 → 组 batch 请求；完成走 batchFinished）
 };

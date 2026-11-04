@@ -119,4 +119,10 @@ TMPDIR="$FR4TMP" bash docs/acceptance/fr4-quality-tier/scripts/run-fr4.sh "$BUIL
 echo "== FR-4 golden 契约守卫（round-2：官方 CLI 一文件一进程——批量调用状态串染实证，防 gen_golden 被改成批量）=="
 bash docs/acceptance/fr4-quality-tier/scripts/dfn3-cli-isolation.sh
 
+echo "== FR-1 多音轨选择（TRK/TRK-GUI/ZD-NET/BUILD 族；工作区走磁盘卷 TMPDIR 同 mdl 原因——"
+echo "   ai/hq/sep 产物与 ZD-NET 回归网 run-models/run-pipe/run-batch 的 f32 中间物会撞 /tmp 配额）=="
+TRKTMP="$PWD/$BUILD/.trk-tmp" # 绝对路径，同 FR4TMP 口径
+mkdir -p "$TRKTMP" # 复用目录，跑批 trap 自清内部工作区
+TMPDIR="$TRKTMP" bash docs/acceptance/fr1-audio-track-selection/scripts/run-trk.sh "$BUILD"
+
 echo "== ci-smoke 全绿 =="

@@ -1,0 +1,19 @@
+用例,round-1,说明
+TRK-001,PASS,probe 增键：multi.mkv streams[] 条件插键 language/title/defaultTrack；tiny.mp4 probe 响应与基线逐字节一致（零漂移门）
+TRK-002,PASS,transcode track=k：输出 sourceSpec 跟随所选轨（素材规格错开可观测）
+TRK-003,PASS,denoise track=k：同上 + 陷波系数按所选轨采样率（错配必炸护栏）；流副本 denoise vs 源选轨 denoise 逐字节一致
+TRK-004,PASS,aiDenoise track=k
+TRK-005,PASS,aiDenoiseHq track=k
+TRK-006,PASS,pitch track=k
+TRK-007,PASS,separate track=k + sparse.mkv track=3（非连续 index）正确选中；track=2 指向字幕流 E_FILE
+TRK-008,PASS,内部一致性金标准：extractAudio(track=k) 流副本 → transcode(副本) vs transcode(源,track=k) 逐字节一致（k=1 数据段对齐，AAC priming）；扩展名跟随所选轨编码；包域载荷 vs ffmpeg -map parity
+TRK-009,PASS,缺省零漂移：不带 track 六动词+extractAudio 对 multi.mkv 输出与基线逐字节一致（sha 钉死）；default 旗标轨被缺省选中（sourceSpec=48k/1 非首轨 44.1k/2）
+TRK-010,PASS,错误面：track="1"/1.5/负数 → E_PARAMS；track=99 越界、track=0 指向视频流 → E_FILE；probe/extractVideo/wsInfo/modelList/batch 带 track → 未知字段 E_PARAMS；st.wav track=1 越界 E_FILE
+TRK-011,PASS,pipeline：顶层 track=3 两步链 → 步 1 params.track=3、产物从轨 3 起点；步内 track 预校验拒；track=99 步 1 前 fail-fast 无版本目录
+TRK-012,PASS,fail-fast 时序：multi.mkv + track=99 + aiDenoise → E_FILE 且无版本目录、无模型加载副作用
+TRK-013,PASS,工作区记录：带 track 任务 params 含 track；不带任务 workspace.json 记录键面/params 键面零漂移
+TRK-014,PASS,extractAudio 缺省名轨标记：track=1 → *_t1_audio.*；无 track 命名逐字节不变（OQ-4 拍板）
+TRK-GUI-001,PASS,探针：multi.mkv 载入下拉 4 项缺省「自动」；tiny.mp4 下拉隐藏；选轨后七槽请求含 track:3；「自动」无 track 键；换文件同步重置回「自动」；busy 期下拉不锁；管线轨参随行
+TRK-GUI-002,PASS,GUI 文本零漂移：probeDone/probeText 与 jobDone 文案逐字一致（gui-ws/gui-pipe 既有断言不假红）
+ZD-NET,PASS,零漂移回归网：run-json/run-ws/run-models/run-pipe/run-batch/gui-ws/gui-pipe/gui-batch/gui-slot-eqv/thinshell-eqv 全绿（六处精确键集断言不假红）
+BUILD,PASS,构建零警告（linux-test 全量重编 --clean-first）

@@ -73,17 +73,18 @@
 
 | cmd | 字段 | 类型/取值 | 缺省 | 语义 |
 |---|---|---|---|---|
-| `probe` | `input*` | string | — | 结构化流信息（D4 result） |
-| `transcode` | `input*`, `output` | | 源目录规则 | 直通转码 WAV(f32)，输出跟随源 |
-| `denoise` | `input*`, `output`, `humBase`, `wind` | `"50"\|"60"\|"off"`；bool | `"50"`；`true` | DSP 降噪；`humBase:"off"` 且 `wind:false` → E_PARAMS（与 GUI 拒绝逻辑一致，`mainwidget.cpp:172-175`） |
-| `aiDenoise` | `input*`, `output`, `model*` | string | **必填** | GTCRN；输出锁兜底 44.1k/2ch（模型工作点，P0 #4 有意保留） |
-| `aiDenoiseHq` | `input*`, `output`, `model*` | string（目录） | **必填** | FR-4 质量档 DeepFilterNet3（模型=目录：config.ini+3 onnx）；工作点 48k/1ch、**输出跟随源**（`lockCanonicalOutput=false`，AI 引擎首个）；后缀 `_aihq`；引擎表条目自动入 pipeline/batch |
-| `pitch` | `input*`, `output`, `semi*` | number ∈ [-12.0, 12.0] 且 ≠0 | — | SoundTouch 变调；范围对齐 GUI（`mainwidget.cpp:53`）；0 拒绝对齐 GUI（`mainwidget.cpp:193-195`）——比旧 CLI **收紧**（旧 CLI 任意 double 都收），有意为之 |
-| `separate` | `input*`, `output`, `model*`, `stem` | `"vocals"\|"instrumental"` | `"vocals"` | MDX 分离；输出锁兜底规格同上 |
-| `extractAudio` | `input*`, `output` | | 源目录规则 | 流复制抽音轨（输出后缀规则不变，`ffextractor.cpp:176`） |
+| `probe` | `input*` | string | — | 结构化流信息（D4 result）；FR-1 增 `streams[]` 音频流条件键 `language`/`title`/`defaultTrack`（有则插、空/假不插——老素材响应逐字节零漂移；muxer 缺省噪声归一：`und` 视同无、default 旗标全音轨命中视同无） |
+| `transcode` | `input*`, `output`, `track` | int ≥0 | `-1`（best-stream） | 直通转码 WAV(f32)，输出跟随源；`track`=容器内音频流绝对流索引（FR-1，与 probe `streams[].index` 同域） |
+| `denoise` | `input*`, `output`, `humBase`, `wind`, `track` | `"50"\|"60"\|"off"`；bool；int ≥0 | `"50"`；`true`；`-1` | DSP 降噪；`humBase:"off"` 且 `wind:false` → E_PARAMS（与 GUI 拒绝逻辑一致，`mainwidget.cpp:172-175`） |
+| `aiDenoise` | `input*`, `output`, `model*`, `track` | string | **必填**；`-1` | GTCRN；输出锁兜底 44.1k/2ch（模型工作点，P0 #4 有意保留） |
+| `aiDenoiseHq` | `input*`, `output`, `model*`, `track` | string（目录） | **必填**；`-1` | FR-4 质量档 DeepFilterNet3（模型=目录：config.ini+3 onnx）；工作点 48k/1ch、**输出跟随源**（`lockCanonicalOutput=false`，AI 引擎首个）；后缀 `_aihq`；引擎表条目自动入 pipeline/batch |
+| `pitch` | `input*`, `output`, `semi*`, `track` | number ∈ [-12.0, 12.0] 且 ≠0；int ≥0 | —；`-1` | SoundTouch 变调；范围对齐 GUI（`mainwidget.cpp:53`）；0 拒绝对齐 GUI（`mainwidget.cpp:193-195`）——比旧 CLI **收紧**（旧 CLI 任意 double 都收），有意为之 |
+| `separate` | `input*`, `output`, `model*`, `stem`, `track` | `"vocals"\|"instrumental"`；int ≥0 | `"vocals"`；`-1` | MDX 分离；输出锁兜底规格同上 |
+| `extractAudio` | `input*`, `output`, `track` | int ≥0 | `-1`（best-stream） | 流复制抽**所选**音轨（输出后缀规则不变，`ffextractor.cpp:176`）；FR-1：`track` ≥0 时缺省名插 `_t<N>` 段（显式轨不同产物不得同名静默覆盖），无 `track` 命名逐字节不变 |
 | `extractVideo` | `input*`, `output` | | 源目录规则 | 流复制抽无声视频 |
 
 - **`model` 必填是刻意收紧**：现状 GUI（appDir 相对）与 CLI（third_party 相对 CWD）两套缺省不同源，且 `QCoreApplication::applicationDirPath()` 在无应用实例的 CLI 模式下行为不可用——把「模型路径解析」这个策略上移给调用方薄壳（GUI 壳沿用 appDir 规则、旧 CLI 壳沿用 third_party 规则、CI 显式传），命令层本体无环境依赖。FR-8 模型管理器落地时在此点接管。
+- **`track`（FR-1 多音轨选择，仅引擎动词 + `extractAudio` 收）**：值域整数 ≥0（非整数「track 必须是整数」、负数「track 不能为负」→ E_PARAMS；越界「track N 超出流范围（共 M 条流）」、指向非音频流「track N 不是音频流」→ E_FILE，产生点单源 `resolveAudioStream`）。缺省 `-1` = `av_find_best_stream` 原式（行为零漂移）。`pipeline` 顶层 `track` 仅注步 1 子请求（中间产物单轨，链内不传）；`batch` 顶层与 steps 步内、`probe`/`extractVideo`/`wsInfo`/model 族一律「未知字段：track」拒收（绝对索引是文件级属性，跨异构文件的共享模板无意义）。
 - **严格校验**：未知 `cmd`、未知字段（动词级+信封级）、类型错、枚举值非法、范围外、`input` 缺失/空、`output` 非空校验、`output` 绝对路径 == `input` 绝对路径（`QFileInfo::absoluteFilePath` 比较）→ 一律 E_PARAMS。未知字段拒收是给 NFR-A3「幻觉参数 100% 被 schema 拦截」打的前站。
 - **`v` 字段**：请求可选、仅接受 1（缺省 1），响应恒带。此层是 Agent 的工具合同，注册表/管线两包必然扩字段，版本位是合同演化的最低成本保险。
 
