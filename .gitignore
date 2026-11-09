@@ -22,3 +22,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 *.user
+
+# wp-1.0 对照构建树（一次性行为产物，防再次误入库）
+/docs/tmp/linux-build/build-pre/
+/docs/tmp/linux-build/build-post/
